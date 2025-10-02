@@ -7,13 +7,16 @@ import {
   ensureFolder,
   getFolder,
 } from '../lib/db';
+import { deriveTxtFileName, detectFileKind, SupportedFileKind } from '../lib/text-conversion';
+import { buildObjectKey } from '../lib/storage';
 
-function sanitizeFileName(fileName: string): string {
-  return fileName
-    .replace(/\s+/g, '-')           // whitespace → dashes
-    .replace(/[^a-zA-Z0-9.-]/g, '') // keep letters, digits, dot, hyphen
-    .toLowerCase();
-}
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+const MIME_BY_KIND: Record<SupportedFileKind, string> = {
+  txt: 'text/plain',
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
 
 export async function handleUploadUrl(c: AppContext) {
   try {
@@ -26,22 +29,32 @@ export async function handleUploadUrl(c: AppContext) {
       throw new HTTPException(400, { message: parsed.error.message });
     }
 
-    const { folderId, folderName, visibility, fileName, size } = parsed.data;
+    const { folderId, folderName, visibility, fileName, size, mimeType } = parsed.data;
 
-    if (!fileName.toLowerCase().endsWith('.txt')) {
-      throw new HTTPException(400, { message: 'Only .txt files are supported' });
+    if (size > MAX_UPLOAD_BYTES) {
+      throw new HTTPException(400, { message: 'File exceeds the 5 MB upload limit.' });
     }
 
-    let folder = await getFolder(env, folderId);
+    const detectedKind = detectFileKind(fileName, mimeType);
+    if (!detectedKind) {
+      throw new HTTPException(400, { message: 'Only .pdf, .docx, or .txt files are supported.' });
+    }
+
+    const normalizedName = deriveTxtFileName(fileName);
+
+    let folder = await getFolder(env, folderId, user.tenant);
     if (!folder) {
       await ensureFolder(
         env,
-        folderId,
-        folderName,
-        visibility,
-        visibility === 'public' ? null : user.id
+        {
+          id: folderId,
+          tenant: user.tenant,
+          name: folderName,
+          visibility,
+          ownerId: visibility === 'public' ? null : user.id,
+        },
       );
-      folder = await getFolder(env, folderId);
+      folder = await getFolder(env, folderId, user.tenant);
     }
     if (!folder) {
       throw new HTTPException(500, { message: 'Unable to resolve folder' });
@@ -50,23 +63,29 @@ export async function handleUploadUrl(c: AppContext) {
     assertFolderVisibility(folder, user.id);
 
     const fileId = crypto.randomUUID();
-    const safeName = sanitizeFileName(fileName);
-    const basePath = visibility === 'public' ? 'public' : `users/${user.id}`;
-    const key = `${basePath}/${folderId}/${fileId}-${safeName}`;
+    const key = buildObjectKey({
+      visibility,
+      ownerId: user.id,
+      folderId,
+      fileId,
+      fileName: normalizedName,
+    });
 
     await createFileRecord(env, {
       id: fileId,
-      folder_id: folderId,
-      owner_id: user.id,
+      tenant: user.tenant,
+      folderId,
+      ownerId: user.id,
       visibility,
-      file_name: fileName,
-      r2_key: key,
+      fileName: normalizedName,
+      r2Key: key,
       size,
       status: 'uploading',
+      mimeType: MIME_BY_KIND[detectedKind],
     });
 
     // ---- Try presign (several variants). If all fail, return the exact reason. ----
-    const contentType = 'text/plain';
+    const contentType = MIME_BY_KIND[detectedKind];
     let urlStr: string | null = null;
     const reasons: string[] = [];
 

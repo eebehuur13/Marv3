@@ -3,9 +3,10 @@
 Marble is a Cloudflare-first playground for storing plain-text docs and experimenting with retrieval-augmented chat. The Worker uses Hono, D1, R2, and Vectorize; the frontend is a React + Vite SPA. Authentication through Cloudflare Access is planned, but today the Worker falls back to a deterministic dev user, so you can run everything locally without Access secrets.
 
 ## What you can do
-- Upload `.txt` files via the SPA or the `/api/upload-direct` route; files land in R2 and metadata is tracked in D1.
+- Upload `.pdf`, `.docx`, or `.txt` files (≤5&nbsp;MB) via the SPA or the `/api/upload-direct` route; uploads are converted to plain text files in R2 (original binaries are discarded), metadata is tracked in D1, and ingestion into Vectorize kicks off automatically right after the upload finishes. Private uploads isolate embeddings under a user-specific namespace derived from the uploader’s Access ID.
 - Trigger ingestion to chunk files (1.5k chars, 200-char overlap), embed with OpenAI, and write vectors into the configured Vectorize index.
 - Ask `/api/chat` questions that cite folder, file, and inclusive line ranges from retrieved chunks.
+- Manage folders and documents from the SPA with bulk actions (multi-select delete, private folder removal once empty).
 - Inspect end-to-end retrieval with `/api/debug/*` routes (embed, query, file drill-down, vector stats).
 
 ## Requirements
@@ -70,20 +71,20 @@ npx wrangler@4 d1 execute MARBLE_DB --file ./seeds/seed.sql
 
 ## Running tests
 ```bash
-npm test --silent
+npm test
 ```
 Tests use the mocks in `tests/helpers/` to simulate R2, D1, Vectorize, and OpenAI.
 
 ## Deploying
 ```bash
-# Deploy the Worker
-npx wrangler@4 deploy
+# Deploy the Worker (updates the production script bound to strategicfork.xyz)
+npx wrangler@4 deploy --env prod
 
 # Build the SPA (deploy to Pages or your static host)
 cd frontend
 npm run build
 ```
-Point your static hosting to the Vite build output and configure DNS/Access if required.
+Point your static hosting to the Vite build output. If you protect the app with Cloudflare Access, serve the SPA and `/api` Worker on the same eTLD+1 (e.g. `https://strategicfork.xyz` and `https://strategicfork.xyz/api/*`) so the Access cookie remains first-party; otherwise browsers will drop it on fetch/XHR requests.
 
 ## API overview
 - `POST /api/upload-url` – generate presigned upload URL to R2.
@@ -103,7 +104,8 @@ tests/           Vitest suites with mocked Cloudflare/OpenAI services
 ```
 
 ## Notes & conventions
-- Public folders live under the reserved ID `public-root`. User-specific storage follows `user:{id}` for vectors and `users/{id}` for R2 keys.
+- Public folders live under the reserved ID `public-root`. User-specific storage follows `user:{base64url(id)}` for vectors and `users/{id}` for R2 keys.
+- Uploaded PDFs and DOCX files are converted to `.txt` with the same basename before storage; only the text representation is persisted and ingested.
 - Chunk ranges are inclusive; if you modify chunk size or overlap keep the overlap ≥200 characters (update this README if you change the invariant).
 - The Worker defaults `ALLOWED_ORIGIN` to `http://localhost:5173`; override via secret if your frontend runs elsewhere.
 - Keep `wrangler.toml` and automation scripts in sync when you swap OpenAI models or embedding dimensions to avoid Vectorize errors.

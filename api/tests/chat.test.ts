@@ -34,6 +34,7 @@ describe('chat route', () => {
       owner_id: null,
       created_at: timestamp,
       updated_at: timestamp,
+      deleted_at: null,
     });
 
     db.files.set('file-1', {

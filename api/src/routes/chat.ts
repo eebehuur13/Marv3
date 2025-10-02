@@ -39,22 +39,23 @@ export async function handleChat(c: AppContext) {
     throw new HTTPException(400, { message: parsed.error.message });
   }
 
-  const rawQuestion = parsed.data.question.trim();
-  if (!rawQuestion) {
-    throw new HTTPException(400, { message: 'Question cannot be empty' });
+  const rawMessage = parsed.data.message.trim();
+  if (!rawMessage) {
+    throw new HTTPException(400, { message: 'Message cannot be empty' });
   }
 
-  const lookupMatch = rawQuestion.match(/^\/lookup\s*(.*)$/i);
-  const isLookup = Boolean(lookupMatch);
+  const knowledgeMode = parsed.data.knowledgeMode ?? false;
+  const lookupMatch = rawMessage.match(/^\/lookup\s*(.*)$/i);
+  const shouldLookup = knowledgeMode || Boolean(lookupMatch);
 
-  if (!isLookup) {
+  if (!shouldLookup) {
     const chatId = crypto.randomUUID();
-    const structured = await generateGeneralAnswer(c.env, rawQuestion);
+    const structured = await generateGeneralAnswer(c.env, rawMessage);
 
     await recordChat(c.env, {
       id: chatId,
       user_id: user.id,
-      question: rawQuestion,
+      question: rawMessage,
       answer: structured.answer,
       citations: JSON.stringify(structured.citations ?? []),
     });
@@ -67,9 +68,9 @@ export async function handleChat(c: AppContext) {
     });
   }
 
-  const lookupQuery = (lookupMatch?.[1] ?? '').trim();
+  const lookupQuery = lookupMatch ? (lookupMatch[1] ?? '').trim() : rawMessage;
   if (!lookupQuery) {
-    throw new HTTPException(400, { message: 'Lookup query cannot be empty' });
+    throw new HTTPException(400, { message: 'Knowledge mode requires a non-empty question' });
   }
 
   // 1) Embed & normalize to number[]
@@ -172,7 +173,7 @@ export async function handleChat(c: AppContext) {
   // 5) Ask your LLM to synthesize
   const structured = await generateStructuredAnswer(
     c.env,
-    lookupQuery,
+    rawMessage,
     contexts.map((cxt) => ({
       folderName: cxt.folderName,
       fileName: cxt.fileName,
@@ -186,7 +187,7 @@ export async function handleChat(c: AppContext) {
   await recordChat(c.env, {
     id: chatId,
     user_id: user.id,
-    question: rawQuestion,
+    question: rawMessage,
     answer: structured.answer,
     citations: JSON.stringify(structured.citations),
   });

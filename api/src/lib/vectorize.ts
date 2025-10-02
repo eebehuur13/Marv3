@@ -17,8 +17,37 @@ export interface VectorMatch extends VectorMetadata {
   score: number;
 }
 
+function encodeOwnerId(ownerId: string): string {
+  let base64: string;
+  if (typeof btoa === 'function') {
+    base64 = btoa(ownerId);
+  } else if (typeof Buffer !== 'undefined') {
+    base64 = Buffer.from(ownerId, 'utf8').toString('base64');
+  } else {
+    throw new Error('Base64 encoding not supported in this environment');
+  }
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function decodeOwnerId(token: string): string {
+  if (!token) return '';
+  const padded = token.padEnd(token.length + ((4 - (token.length % 4)) % 4), '=');
+  const base64 = padded.replace(/-/g, '+').replace(/_/g, '/');
+  try {
+    if (typeof atob === 'function') {
+      return atob(base64);
+    }
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(base64, 'base64').toString('utf8');
+    }
+  } catch {
+    // ignore and fall through
+  }
+  return '';
+}
+
 function partitionForVisibility(visibility: Visibility, ownerId: string): string {
-  return visibility === 'public' ? 'public' : `user:${ownerId}`;
+  return visibility === 'public' ? 'public' : `user:${encodeOwnerId(ownerId)}`;
 }
 
 /** Detect V2 binding: remove()/describe() present or upsert/query single-arg form */
@@ -93,7 +122,8 @@ interface QueryOptions {
 function filterFromNamespace(ns: string): Record<string, unknown> {
   if (ns === 'public') return { visibility: 'public' };
   if (ns.startsWith('user:')) {
-    const ownerId = ns.slice('user:'.length);
+    const encoded = ns.slice('user:'.length);
+    const ownerId = decodeOwnerId(encoded);
     return { visibility: 'private', ownerId };
   }
   return {};
@@ -113,7 +143,7 @@ export async function queryNamespace(env: MarbleBindings, options: QueryOptions)
     const ownerId =
       metadata?.ownerId ??
       (visibility === 'private' && options.namespace.startsWith('user:')
-        ? options.namespace.slice('user:'.length)
+        ? decodeOwnerId(options.namespace.slice('user:'.length))
         : '');
 
     return {
@@ -170,5 +200,5 @@ export function publicNamespace(): string {
   return 'public';
 }
 export function privateNamespace(ownerId: string): string {
-  return `user:${ownerId}`;
+  return `user:${encodeOwnerId(ownerId)}`;
 }

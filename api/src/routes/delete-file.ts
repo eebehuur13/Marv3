@@ -7,7 +7,7 @@ export async function handleDeleteFile(c: AppContext) {
   const user = c.get('user');
   const fileId = c.req.param('id');
 
-  const file = await getFile(c.env, fileId);
+  const file = await getFile(c.env, fileId, user.tenant);
   if (!file) {
     throw new HTTPException(404, { message: 'File not found' });
   }

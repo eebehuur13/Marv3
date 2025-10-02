@@ -89,26 +89,69 @@ export class MockD1 implements D1Database {
       return null;
     }
 
-    if (normalized.startsWith('insert into folders')) {
-      const [id, tenant, ownerId, name, visibility] = args as [
+    if (normalized.startsWith('update folders set name')) {
+      const [id, name, visibility, ownerId, tenant] = args as [
+        string,
         string,
         string,
         string | null,
         string,
-        string,
       ];
-      const timestamp = new Date().toISOString();
-      this.folders.set(id, {
-        id,
-        tenant,
-        owner_id: ownerId,
-        name,
-        visibility: visibility as 'public' | 'private',
-        created_at: timestamp,
-        updated_at: timestamp,
-        deleted_at: null,
-      });
+      const folder = this.folders.get(id);
+      if (folder && folder.tenant === tenant) {
+        folder.name = name;
+        folder.visibility = visibility as Visibility;
+        folder.owner_id = ownerId;
+        folder.updated_at = new Date().toISOString();
+      }
       return null;
+    }
+
+    if (normalized.startsWith('insert into folders')) {
+      if (args.length === 6) {
+        const [id, tenant, ownerId, name, visibility] = args as [
+          string,
+          string,
+          string | null,
+          string,
+          string,
+        ];
+        const timestamp = new Date().toISOString();
+        this.folders.set(id, {
+          id,
+          tenant,
+          owner_id: ownerId,
+          name,
+          visibility: visibility as 'public' | 'private',
+          created_at: timestamp,
+          updated_at: timestamp,
+          deleted_at: null,
+        });
+        return null;
+      }
+
+      if (args.length === 5) {
+        const [id, tenant, name, visibility, ownerId] = args as [
+          string,
+          string,
+          string,
+          string,
+          string | null,
+        ];
+        const existing = this.folders.get(id);
+        const timestamp = existing?.created_at ?? new Date().toISOString();
+        this.folders.set(id, {
+          id,
+          tenant,
+          owner_id: ownerId,
+          name,
+          visibility: visibility as 'public' | 'private',
+          created_at: timestamp,
+          updated_at: new Date().toISOString(),
+          deleted_at: existing?.deleted_at ?? null,
+        });
+        return null;
+      }
     }
 
     if (normalized.startsWith('select id, tenant, owner_id, name, visibility, created_at, updated_at from folders')) {
@@ -175,9 +218,12 @@ export class MockD1 implements D1Database {
       }
 
       if (normalized.includes('from folders f left join users u on u.id = f.owner_id where f.id = ?1')) {
-        const [id] = args as [string];
+        const [id, tenant] = args as [string, string?];
         const folder = this.folders.get(id);
         if (!folder || folder.deleted_at) {
+          return null;
+        }
+        if (tenant && folder.tenant !== tenant) {
           return null;
         }
         const owner = folder.owner_id ? this.users.get(folder.owner_id) : undefined;
@@ -186,6 +232,75 @@ export class MockD1 implements D1Database {
           owner_email: owner?.email ?? null,
           owner_display_name: owner?.display_name ?? null,
         };
+      }
+
+      if (normalized.includes('from files fi join folders fo on fo.id = fi.folder_id')) {
+        if (normalized.includes('where fi.id = ?1')) {
+          const [fileId, tenant] = args as [string, string?];
+          const file = this.files.get(fileId);
+          if (!file || file.deleted_at) {
+            return null;
+          }
+          if (tenant && file.tenant !== tenant) {
+            return null;
+          }
+          const folder = this.folders.get(file.folder_id);
+          const owner = this.users.get(file.owner_id);
+          if (!folder || folder.deleted_at || folder.tenant !== file.tenant || !owner) {
+            return null;
+          }
+          return {
+            ...file,
+            folder_name: folder.name,
+            folder_visibility: folder.visibility,
+            owner_email: owner.email,
+            owner_display_name: owner.display_name ?? null,
+          };
+        }
+
+        const tenant = args[0] as string;
+        let index = 1;
+        let folderId: string | undefined;
+        if (normalized.includes('fi.folder_id = ?')) {
+          folderId = args[index++] as string;
+        }
+        let ownerFilter: string | undefined;
+        const includesPrivateUnion = normalized.includes("or (fi.visibility = 'private'");
+        const privateOnly = normalized.includes("fi.visibility = 'private' and fi.owner_id = ?");
+        if (privateOnly || includesPrivateUnion) {
+          ownerFilter = args[index++] as string;
+        }
+
+        const results = Array.from(this.files.values())
+          .filter((file) => file.tenant === tenant && !file.deleted_at)
+          .filter((file) => {
+            const folder = this.folders.get(file.folder_id);
+            if (!folder || folder.deleted_at || folder.tenant !== tenant) {
+              return false;
+            }
+            if (folderId && file.folder_id !== folderId) {
+              return false;
+            }
+            if (includesPrivateUnion && ownerFilter) {
+              return file.visibility === 'public' || (file.visibility === 'private' && file.owner_id === ownerFilter);
+            }
+            if (privateOnly && ownerFilter) {
+              return file.visibility === 'private' && file.owner_id === ownerFilter;
+            }
+            return file.visibility === 'public';
+          })
+          .map((file) => {
+            const folder = this.folders.get(file.folder_id);
+            const owner = this.users.get(file.owner_id);
+            return {
+              ...file,
+              folder_name: folder?.name ?? 'Folder',
+              folder_visibility: folder?.visibility ?? 'private',
+              owner_email: owner?.email ?? '',
+              owner_display_name: owner?.display_name ?? null,
+            };
+          });
+        return results;
       }
 
       if (normalized.includes('from files f join folders d on d.id = f.folder_id')) {
@@ -278,7 +393,7 @@ export class MockD1 implements D1Database {
     }
 
     if (normalized.startsWith('insert into files')) {
-      const [id, tenant, folderId, ownerId, fileName, r2Key, visibility, size, mimeType, status] = args as [
+      const [id, tenant, folderId, ownerId, visibility, fileName, r2Key, size, mimeType, status] = args as [
         string,
         string,
         string,
@@ -296,9 +411,9 @@ export class MockD1 implements D1Database {
         tenant,
         folder_id: folderId,
         owner_id: ownerId,
+        visibility: visibility as 'public' | 'private',
         file_name: fileName,
         r2_key: r2Key,
-        visibility: visibility as 'public' | 'private',
         size,
         mime_type: mimeType ?? null,
         status,
@@ -353,6 +468,12 @@ export class MockD1 implements D1Database {
         file.deleted_at = new Date().toISOString();
         file.updated_at = file.deleted_at;
       }
+      return null;
+    }
+
+    if (normalized.startsWith('delete from files where id = ?1')) {
+      const [fileId] = args as [string];
+      this.files.delete(fileId);
       return null;
     }
 

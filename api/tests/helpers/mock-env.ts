@@ -101,6 +101,7 @@ export function createTestEnv(): TestContext {
     CHUNK_OVERLAP: '200',
     CF_ACCESS_AUD: 'test-aud',
     CF_ACCESS_TEAM_DOMAIN: 'team.example.com',
+    DEFAULT_TENANT: 'default',
   };
 
   const ctx: ExecutionContext = {

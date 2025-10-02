@@ -87,6 +87,9 @@ async function importKey(jwk: AccessJwk): Promise<CryptoKey> {
 
 async function getSigningKey(env: MarbleBindings, kid: string): Promise<CryptoKey> {
   const domain = env.CF_ACCESS_TEAM_DOMAIN;
+  if (!domain) {
+    throw new HTTPException(401, { message: 'Server missing Access team domain configuration' });
+  }
   const now = Date.now();
   const cached = jwkCache.get(domain);
   if (cached && now - cached.fetchedAt < 10 * 60 * 1000) {
@@ -133,16 +136,37 @@ function ensureAudience(payload: Record<string, unknown>, aud: string) {
   throw new HTTPException(401, { message: 'Access token audience mismatch' });
 }
 
-function toAuthenticatedUser(payload: Record<string, unknown>): AuthenticatedUser {
+function resolveTenant(payload: Record<string, unknown>, env: MarbleBindings): string {
+  const explicit = typeof payload.tenant === 'string' ? payload.tenant : undefined;
+  if (explicit) {
+    return explicit;
+  }
+
+  const orgClaim = typeof payload.org === 'string' ? payload.org : undefined;
+  if (orgClaim) {
+    return orgClaim;
+  }
+
+  return env.DEFAULT_TENANT ?? 'default';
+}
+
+function toAuthenticatedUser(payload: Record<string, unknown>, env: MarbleBindings): AuthenticatedUser {
   const id = typeof payload.sub === 'string' ? payload.sub : undefined;
   const email = typeof payload.email === 'string' ? payload.email : undefined;
-  const name = typeof payload.name === 'string' ? payload.name : undefined;
+  const displayName = typeof payload.name === 'string' ? payload.name : null;
+  const avatarUrl = typeof payload.picture === 'string' ? payload.picture : null;
 
   if (!id || !email) {
     throw new HTTPException(401, { message: 'Access token missing user claims' });
   }
 
-  return { id, email, name };
+  return {
+    id,
+    email,
+    displayName,
+    avatarUrl,
+    tenant: resolveTenant(payload, env),
+  };
 }
 
 /**
@@ -164,7 +188,9 @@ export async function authenticateRequest(request: Request, env: MarbleBindings)
     return {
       id: 'dev-user',
       email: 'dev@local',
-      name: 'Dev User',
+      displayName: 'Dev User',
+      avatarUrl: null,
+      tenant: env.DEFAULT_TENANT ?? 'default',
     };
   }
 
@@ -175,13 +201,18 @@ export async function authenticateRequest(request: Request, env: MarbleBindings)
   }
 
   const { payload, signature, signingInput, kid } = parseJwt(token);
+  if (!env.CF_ACCESS_AUD) {
+    throw new HTTPException(401, { message: 'Server missing Access audience configuration' });
+  }
   ensureAudience(payload, env.CF_ACCESS_AUD);
 
   const key = await getSigningKey(env, kid);
-  const verified = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signature, signingInput);
+  const signatureView = new Uint8Array(signature);
+  const signingView = new Uint8Array(signingInput);
+  const verified = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signatureView, signingView);
   if (!verified) {
     throw new HTTPException(401, { message: 'Invalid Access token signature' });
   }
 
-  return toAuthenticatedUser(payload);
+  return toAuthenticatedUser(payload, env);
 }

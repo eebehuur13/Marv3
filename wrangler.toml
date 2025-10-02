@@ -1,4 +1,4 @@
-name = "marv1-dev"
+name = "marv2-api"
 account_id = "e1fc4922f78222b947a9c549529329aa"
 main = "api/src/worker.ts"
 compatibility_date = "2024-05-13"
@@ -13,51 +13,65 @@ OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 [[d1_databases]]
 binding = "MARBLE_DB"
-database_name = "marv1_dev_db"
-database_id = "55cac4a2-9ea7-4d4c-85c1-05a261bab207"
+database_name = "marv2_db"
+database_id = "c032b0ae-c7ec-4fcd-8aa1-288d37a1afde"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "MARBLE_FILES"
-bucket_name = "marv1-dev-files"
+bucket_name = "marv2-files"
 
 [[vectorize]]
 binding = "MARBLE_VECTORS"
-index_name = "marv1-dev-index"
+index_name = "marv2-index"
 
 [observability.logs]
 enabled = true
 
 [env.staging]
-name = "marv1-staging"
+name = "marv2-staging"
+
+[env.staging.vars]
+VECTOR_TOP_K = "8"
+CHUNK_SIZE = "1500"
+CHUNK_OVERLAP = "200"
+OPENAI_MODEL = "gpt-5-mini-2025-08-07"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 [[env.staging.d1_databases]]
 binding = "MARBLE_DB"
-database_name = "marv1_staging_db"
-database_id = "f86e3152-f646-475c-8078-eb733237a869"
+database_name = "marv2_db"
+database_id = "c032b0ae-c7ec-4fcd-8aa1-288d37a1afde"
 migrations_dir = "migrations"
 
 [[env.staging.r2_buckets]]
 binding = "MARBLE_FILES"
-bucket_name = "marv1-staging-files"
+bucket_name = "marv2-files"
 
 [[env.staging.vectorize]]
 binding = "MARBLE_VECTORS"
-index_name = "marv1-staging-index"
+index_name = "marv2-index"
 
 [env.prod]
-name = "marv1"
+name = "marv2"
+
+[env.prod.vars]
+VECTOR_TOP_K = "8"
+CHUNK_SIZE = "1500"
+CHUNK_OVERLAP = "200"
+OPENAI_MODEL = "gpt-5-mini-2025-08-07"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 [[env.prod.d1_databases]]
 binding = "MARBLE_DB"
-database_name = "marv1_prod_db"
-database_id = "e4c2479e-242f-45f7-af16-a3f8e5cdd1e5"
+database_name = "marv2_db"
+database_id = "c032b0ae-c7ec-4fcd-8aa1-288d37a1afde"
 migrations_dir = "migrations"
 
 [[env.prod.r2_buckets]]
 binding = "MARBLE_FILES"
-bucket_name = "marv1-prod-files"
+bucket_name = "marv2-files"
 
 [[env.prod.vectorize]]
 binding = "MARBLE_VECTORS"
-index_name = "marv1-prod-index"
+index_name = "marv2-index"

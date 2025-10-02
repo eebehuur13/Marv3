@@ -4,12 +4,14 @@ import {
   API_BASE,
   createFolder,
   deleteFile,
+  deleteFolder,
   fetchFiles,
   fetchFolders,
   type FileSummary,
   type FolderSummary,
   type Visibility,
   updateFile,
+  updateFolder,
   uploadFile,
 } from '../lib/api';
 
@@ -24,9 +26,20 @@ interface UploadDialogProps {
   onClose: () => void;
   onUpload: (args: { file: File; folderId: string; visibility: Visibility; name?: string }) => void;
   isUploading: boolean;
+  defaultFolderId?: string | null;
 }
 
-function UploadDialog({ open, visibility, folders, onClose, onUpload, isUploading }: UploadDialogProps) {
+function UploadDialog({
+  open,
+  visibility,
+  folders,
+  onClose,
+  onUpload,
+  isUploading,
+  defaultFolderId,
+}: UploadDialogProps) {
+  const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+  const ACCEPTED_EXTENSIONS = ['.txt', '.pdf', '.docx'];
   const [selectedVisibility, setSelectedVisibility] = useState<Visibility>(visibility);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -37,15 +50,18 @@ function UploadDialog({ open, visibility, folders, onClose, onUpload, isUploadin
     setSelectedVisibility(visibility);
   }, [visibility]);
 
+  const scopedFolders = useMemo(
+    () => folders.filter((folder) => folder.visibility === selectedVisibility),
+    [folders, selectedVisibility],
+  );
+
   useEffect(() => {
-    const scopedFolders = folders.filter((folder) => folder.visibility === selectedVisibility);
-    setSelectedFolderId((prev) => {
-      if (prev && scopedFolders.some((folder) => folder.id === prev)) {
-        return prev;
-      }
-      return scopedFolders[0]?.id ?? null;
-    });
-  }, [folders, selectedVisibility]);
+    if (defaultFolderId && scopedFolders.some((folder) => folder.id === defaultFolderId)) {
+      setSelectedFolderId(defaultFolderId);
+      return;
+    }
+    setSelectedFolderId(scopedFolders[0]?.id ?? null);
+  }, [scopedFolders, defaultFolderId]);
 
   useEffect(() => {
     if (!open) {
@@ -56,8 +72,6 @@ function UploadDialog({ open, visibility, folders, onClose, onUpload, isUploadin
   }, [open]);
 
   if (!open) return null;
-
-  const scopedFolders = folders.filter((folder) => folder.visibility === selectedVisibility);
 
   return (
     <div className="dialog-backdrop" role="dialog" aria-modal="true">
@@ -108,7 +122,7 @@ function UploadDialog({ open, visibility, folders, onClose, onUpload, isUploadin
             <span>File</span>
             <input
               type="file"
-              accept=".txt"
+              accept={ACCEPTED_EXTENSIONS.join(',')}
               onChange={(event) => {
                 const chosen = event.target.files?.[0] ?? null;
                 if (!chosen) {
@@ -116,14 +130,21 @@ function UploadDialog({ open, visibility, folders, onClose, onUpload, isUploadin
                   setName('');
                   return;
                 }
-                if (!chosen.name.toLowerCase().endsWith('.txt')) {
-                  setError('Only .txt files are supported right now.');
+                const lower = chosen.name.toLowerCase();
+                const supported = ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+                if (!supported) {
+                  setError('Only .pdf, .docx, or .txt files are supported.');
+                  setFile(null);
+                  return;
+                }
+                if (chosen.size > MAX_UPLOAD_BYTES) {
+                  setError('File must be 5 MB or smaller.');
                   setFile(null);
                   return;
                 }
                 setError(null);
                 setFile(chosen);
-                setName(chosen.name.replace(/\.txt$/i, ''));
+                setName(chosen.name.replace(/\.[^.]+$/, ''));
               }}
               disabled={isUploading}
             />
@@ -141,6 +162,9 @@ function UploadDialog({ open, visibility, folders, onClose, onUpload, isUploadin
           </label>
 
           {error && <p className="error-text">{error}</p>}
+          <p className="helper-text">
+            PDF, DOCX, or TXT files up to 5&nbsp;MB are converted to plain text before ingesting.
+          </p>
         </div>
         <footer className="dialog-footer">
           <button type="button" className="link" onClick={onClose} disabled={isUploading}>
@@ -261,14 +285,40 @@ function FolderDialog({ open, onClose, onCreate, isSaving }: FolderDialogProps) 
   );
 }
 
+type FileSortField = 'name' | 'owner' | 'visibility' | 'updatedAt';
+
 export function FileManager({ currentUserId }: FileManagerProps) {
   const [visibilityFilter, setVisibilityFilter] = useState<Visibility>('private');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<FileSortField>('updatedAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showUpload, setShowUpload] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
-  const [renamingFile, setRenamingFile] = useState<FileSummary | null>(null);
+  const [inlineRenameId, setInlineRenameId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [folderRenameId, setFolderRenameId] = useState<string | null>(null);
+  const [folderRenameDraft, setFolderRenameDraft] = useState('');
   const [alert, setAlert] = useState<{ type: 'info' | 'error'; message: string } | null>(null);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [activeFileMenuId, setActiveFileMenuId] = useState<string | null>(null);
+  const [activeFolderMenuId, setActiveFolderMenuId] = useState<string | null>(null);
+  const [isFolderToolbarMenuOpen, setIsFolderToolbarMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const closeMenus = () => {
+      setActiveFileMenuId(null);
+      setActiveFolderMenuId(null);
+      setIsFolderToolbarMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', closeMenus);
+    return () => window.removeEventListener('pointerdown', closeMenus);
+  }, []);
 
   const foldersQuery = useQuery({
     queryKey: ['folders', 'all'],
@@ -277,21 +327,31 @@ export function FileManager({ currentUserId }: FileManagerProps) {
 
   const folders: FolderSummary[] = foldersQuery.data?.folders ?? [];
 
-  const foldersByVisibility = useMemo(() => {
-    const privateFolders = folders.filter((folder) => folder.visibility === 'private' && folder.owner?.id === currentUserId);
-    const publicFolders = folders.filter((folder) => folder.visibility === 'public');
-    return { private: privateFolders, public: publicFolders };
-  }, [folders, currentUserId]);
+  const privateFolders = useMemo(
+    () => folders.filter((folder) => folder.visibility === 'private'),
+    [folders],
+  );
+  const publicFolders = useMemo(
+    () => folders.filter((folder) => folder.visibility === 'public'),
+    [folders],
+  );
 
   useEffect(() => {
-    const scoped = visibilityFilter === 'private' ? foldersByVisibility.private : foldersByVisibility.public;
+    const scoped = visibilityFilter === 'private' ? privateFolders : publicFolders;
     setSelectedFolderId((prev) => {
       if (prev && scoped.some((folder) => folder.id === prev)) {
         return prev;
       }
       return scoped[0]?.id ?? null;
     });
-  }, [visibilityFilter, foldersByVisibility.private, foldersByVisibility.public]);
+  }, [visibilityFilter, privateFolders, publicFolders]);
+
+  useEffect(() => {
+    setIsFolderToolbarMenuOpen(false);
+  }, [selectedFolderId]);
+
+  const scopedFolders = visibilityFilter === 'private' ? privateFolders : publicFolders;
+  const selectedFolder = scopedFolders.find((folder) => folder.id === selectedFolderId) ?? null;
 
   const filesQuery = useQuery({
     queryKey: ['files', visibilityFilter, selectedFolderId ?? 'all'],
@@ -304,19 +364,89 @@ export function FileManager({ currentUserId }: FileManagerProps) {
   });
 
   const files = filesQuery.data?.files ?? [];
+  const isLoadingFiles = filesQuery.isLoading;
+
+  useEffect(() => {
+    setSelectedFileIds((prev) =>
+      prev.filter((id) => files.some((file) => file.id === id && file.owner.id === currentUserId)),
+    );
+  }, [files, currentUserId]);
+
+  useEffect(() => {
+    if (!inlineRenameId) return;
+    if (!files.some((file) => file.id === inlineRenameId)) {
+      setInlineRenameId(null);
+      setRenameDraft('');
+    }
+  }, [files, inlineRenameId]);
+
+  useEffect(() => {
+    if (!folderRenameId) return;
+    if (!folders.some((folder) => folder.id === folderRenameId)) {
+      setFolderRenameId(null);
+      setFolderRenameDraft('');
+    }
+  }, [folders, folderRenameId]);
+
   const timestampFormatter = useMemo(
     () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }),
     [],
   );
 
+  const visibleFiles = useMemo(() => {
+    const normalized = searchTerm.trim().toLowerCase();
+    const filtered = files.filter((file) => {
+      if (!normalized) return true;
+      const ownerLabel = (file.owner.displayName ?? file.owner.email).toLowerCase();
+      return file.name.toLowerCase().includes(normalized) || ownerLabel.includes(normalized);
+    });
+    const multiplier = sortDirection === 'asc' ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      let result = 0;
+      if (sortField === 'name') {
+        result = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      } else if (sortField === 'owner') {
+        const ownerA = (a.owner.displayName ?? a.owner.email).toLowerCase();
+        const ownerB = (b.owner.displayName ?? b.owner.email).toLowerCase();
+        result = ownerA.localeCompare(ownerB);
+      } else if (sortField === 'visibility') {
+        result = a.visibility.localeCompare(b.visibility);
+      } else {
+        result = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      }
+      return result * multiplier;
+    });
+  }, [files, searchTerm, sortField, sortDirection]);
+
+  const isOwner = (file: FileSummary) => file.owner.id === currentUserId;
+  const selectableFiles = files.filter(isOwner);
+  const allSelectableSelected =
+    selectableFiles.length > 0 && selectableFiles.every((file) => selectedFileIds.includes(file.id));
+  const isBulkActionDisabled = selectedFileIds.length === 0;
+
   const uploadMutation = useMutation({
-    mutationFn: async ({ file, folderId, visibility, name }: { file: File; folderId: string; visibility: Visibility; name?: string }) => {
+    mutationFn: async ({
+      file,
+      folderId,
+      folderName,
+      visibility,
+      name,
+    }: {
+      file: File;
+      folderId: string;
+      folderName?: string;
+      visibility: Visibility;
+      name?: string;
+    }) => {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('folderId', folderId);
       formData.append('visibility', visibility);
       if (name) {
         formData.append('name', name);
+      }
+      if (folderName) {
+        formData.append('folderName', folderName);
       }
       await uploadFile(formData);
     },
@@ -351,11 +481,26 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     mutationFn: ({ id, name }: { id: string; name: string }) => updateFile(id, { name }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['files'] });
-      setRenamingFile(null);
+      setInlineRenameId(null);
+      setRenameDraft('');
       setAlert({ type: 'info', message: 'File renamed.' });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : 'Rename failed';
+      setAlert({ type: 'error', message });
+    },
+  });
+
+  const folderRenameMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateFolder(id, { name }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['folders', 'all'] });
+      setFolderRenameId(null);
+      setFolderRenameDraft('');
+      setAlert({ type: 'info', message: 'Folder renamed.' });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unable to rename folder';
       setAlert({ type: 'error', message });
     },
   });
@@ -377,11 +522,13 @@ export function FileManager({ currentUserId }: FileManagerProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteFile(id),
-    onSuccess: async () => {
+    onSuccess: async (_, id) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['files'] }),
         queryClient.invalidateQueries({ queryKey: ['folders'] }),
       ]);
+      setSelectedFileIds((prev) => prev.filter((value) => value !== id));
+      setActiveFileMenuId(null);
       setAlert({ type: 'info', message: 'File deleted.' });
     },
     onError: (error: unknown) => {
@@ -390,117 +537,292 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     },
   });
 
-  const scopedFolders = visibilityFilter === 'private' ? foldersByVisibility.private : foldersByVisibility.public;
-  const isOwner = (file: FileSummary) => file.owner.id === currentUserId;
-  const isLoadingFiles = filesQuery.isLoading;
-  const selectedFolder = scopedFolders.find((folder) => folder.id === selectedFolderId) ?? null;
-  const folderMeta = visibilityFilter === 'private' ? 'Personal space' : 'Shared workspace';
-  const documentMeta = selectedFolder
-    ? selectedFolder.name
-    : visibilityFilter === 'public'
-      ? 'All shared folders'
-      : scopedFolders.length === 0
-        ? 'Awaiting folder'
-        : 'All folders';
-  const documentCountLabel = isLoadingFiles ? '…' : files.length.toString();
-  const fileListContent = (() => {
-    if (isLoadingFiles) {
-      return <div className="file-empty">Loading documents…</div>;
-    }
-    if (files.length === 0) {
-      return (
-        <div className="file-empty">
-          {visibilityFilter === 'private'
-            ? 'No documents here yet. Upload a file to get started.'
-            : 'No shared documents yet.'}
-        </div>
-      );
-    }
-    return (
-      <div className="card-list">
-        {files.map((file) => {
-          const ownerLabel = file.owner.displayName ?? file.owner.email;
-          const visibilityLabel = file.visibility === 'public' ? 'Public' : 'Private';
-          const updatedAt = timestampFormatter.format(new Date(file.updatedAt));
-          return (
-            <article key={file.id} className="file-card">
-              <div className="file-card__header">
-                <div>
-                  <div className="file-card__title">{file.name}</div>
-                  <div className="file-card__meta">
-                    <span className={`badge ${file.visibility}`}>{visibilityLabel}</span>
-                    <span className="owner-chip">{ownerLabel}</span>
-                    <span>{file.folder.name}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="file-card__footer">
-                <span className="file-card__timestamp">Updated {updatedAt}</span>
-                <div className="file-card__actions">
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() =>
-                      window.open(`${API_BASE}/api/files/${file.id}/download`, '_blank')?.focus?.()
-                    }
-                  >
-                    Open
-                  </button>
-                  {isOwner(file) && (
-                    <>
-                      <button type="button" className="secondary" onClick={() => setRenamingFile(file)}>
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() =>
-                          toggleVisibilityMutation.mutate({
-                            id: file.id,
-                            visibility: file.visibility === 'public' ? 'private' : 'public',
-                          })
-                        }
-                      >
-                        Make {file.visibility === 'public' ? 'Private' : 'Public'}
-                      </button>
-                      <button type="button" className="danger" onClick={() => deleteMutation.mutate(file.id)}>
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) {
+        await deleteFile(id);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['files'] }),
+        queryClient.invalidateQueries({ queryKey: ['folders'] }),
+      ]);
+      setSelectedFileIds([]);
+      setAlert({ type: 'info', message: 'Files removed.' });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Bulk delete failed';
+      setAlert({ type: 'error', message });
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: ({ id }: { id: string; name: string; fileCount: number }) => deleteFolder(id),
+    onSuccess: async (result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['folders', 'all'] }),
+        queryClient.invalidateQueries({ queryKey: ['files'] }),
+      ]);
+      setSelectedFolderId((prev) => (prev === variables.id ? null : prev));
+      setSelectedFileIds([]);
+      setActiveFolderMenuId(null);
+      setFolderRenameId(null);
+      const removedFiles = result?.removedFiles ?? 0;
+      const descriptor = removedFiles === 1 ? 'file' : 'files';
+      const message =
+        removedFiles > 0
+          ? `Deleted "${variables.name}" and ${removedFiles} ${descriptor}.`
+          : `Deleted "${variables.name}".`;
+      setAlert({ type: 'info', message });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unable to delete folder';
+      setAlert({ type: 'error', message });
+    },
+  });
+
+  const toggleFileSelection = (id: string) => {
+    setSelectedFileIds((prev) =>
+      prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id],
     );
-  })();
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelectableSelected) {
+      setSelectedFileIds([]);
+    } else {
+      setSelectedFileIds(selectableFiles.map((file) => file.id));
+    }
+  };
+
+  const clearSelection = () => setSelectedFileIds([]);
+
+  const handleSort = (field: FileSortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'updatedAt' ? 'desc' : 'asc');
+    }
+  };
+
+  const getAriaSort = (field: FileSortField): 'ascending' | 'descending' | 'none' => {
+    if (sortField !== field) return 'none';
+    return sortDirection === 'asc' ? 'ascending' : 'descending';
+  };
+
+  const startFileRename = (file: FileSummary) => {
+    setInlineRenameId(file.id);
+    setRenameDraft(file.name);
+    setActiveFileMenuId(null);
+  };
+
+  const cancelFileRename = () => {
+    setInlineRenameId(null);
+    setRenameDraft('');
+  };
+
+  const commitFileRename = () => {
+    if (!inlineRenameId) return;
+    const target = files.find((file) => file.id === inlineRenameId);
+    if (!target) {
+      cancelFileRename();
+      return;
+    }
+    const trimmed = renameDraft.trim();
+    if (!trimmed) {
+      setAlert({ type: 'error', message: 'File name is required.' });
+      return;
+    }
+    if (trimmed === target.name) {
+      cancelFileRename();
+      return;
+    }
+    renameMutation.mutate({ id: inlineRenameId, name: trimmed });
+  };
+
+  const startFolderRename = (folder: FolderSummary) => {
+    setFolderRenameId(folder.id);
+    setFolderRenameDraft(folder.name);
+    setActiveFolderMenuId(null);
+  };
+
+  const cancelFolderRename = () => {
+    setFolderRenameId(null);
+    setFolderRenameDraft('');
+  };
+
+  const commitFolderRename = () => {
+    if (!folderRenameId) return;
+    const target = folders.find((folder) => folder.id === folderRenameId);
+    if (!target) {
+      cancelFolderRename();
+      return;
+    }
+    const trimmed = folderRenameDraft.trim();
+    if (!trimmed) {
+      setAlert({ type: 'error', message: 'Folder name is required.' });
+      return;
+    }
+    if (trimmed === target.name) {
+      cancelFolderRename();
+      return;
+    }
+    folderRenameMutation.mutate({ id: folderRenameId, name: trimmed });
+  };
+
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!selectedFolder) return;
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!selectedFolder) {
+      event.dataTransfer.dropEffect = 'none';
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!selectedFolder) {
+      setIsDragging(false);
+      return;
+    }
+    const next = event.relatedTarget as Node | null;
+    if (next && event.currentTarget.contains(next)) {
+      return;
+    }
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const targetFolder = selectedFolder;
+    if (!targetFolder) {
+      setIsDragging(false);
+      setAlert({ type: 'error', message: 'Pick a folder before uploading.' });
+      return;
+    }
+    setIsDragging(false);
+    const droppedFiles = Array.from(event.dataTransfer.files ?? []);
+    if (droppedFiles.length === 0) {
+      return;
+    }
+    const allowed = droppedFiles.filter((file) => file.name.toLowerCase().endsWith('.txt'));
+    if (allowed.length === 0) {
+      setAlert({ type: 'error', message: 'Only .txt files are supported right now.' });
+      return;
+    }
+    if (allowed.length !== droppedFiles.length) {
+      setAlert({ type: 'info', message: 'Unsupported files skipped. Uploading .txt documents only.' });
+    }
+    void (async () => {
+      try {
+        for (const file of allowed) {
+          await uploadMutation.mutateAsync({
+            file,
+            folderId: targetFolder.id,
+            folderName: targetFolder.name,
+            visibility: targetFolder.visibility,
+            name: file.name,
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Upload failed';
+        setAlert({ type: 'error', message });
+      }
+    })();
+  };
+
+  const getFolderDeleteMeta = (folder: FolderSummary) => {
+    if (folder.id === 'public-root' || folder.id === 'private-root') {
+      return { disabled: true, reason: 'This folder is required by Marble.', requiresConfirm: false };
+    }
+    if (folder.owner && folder.owner.id !== currentUserId) {
+      return { disabled: true, reason: 'Only the folder owner can manage this space.', requiresConfirm: false };
+    }
+    return {
+      disabled: false,
+      reason: undefined as string | undefined,
+      requiresConfirm: folder.fileCount > 0,
+    };
+  };
+
+  const selectedFolderUpdatedLabel = selectedFolder
+    ? timestampFormatter.format(new Date(selectedFolder.updatedAt))
+    : null;
+  const selectedFolderOwnerLabel = selectedFolder?.owner
+    ? selectedFolder.owner.displayName ?? selectedFolder.owner.email
+    : null;
+  const isOrgSpace = visibilityFilter === 'public';
+  const spaceLabel = isOrgSpace ? 'Org Shared' : 'Private';
+  const sidebarTitle = isOrgSpace ? 'Org folders' : 'Private folders';
+  const selectedFolderFileCountLabel = selectedFolder
+    ? `${selectedFolder.fileCount} ${selectedFolder.fileCount === 1 ? 'file' : 'files'}`
+    : null;
+  const selectedFolderDeleteMeta = selectedFolder ? getFolderDeleteMeta(selectedFolder) : null;
+  const canManageSelectedFolder = Boolean(
+    selectedFolder && (!selectedFolder.owner?.id || selectedFolder.owner.id === currentUserId),
+  );
+  const canDeleteSelectedFolder = Boolean(canManageSelectedFolder && selectedFolderDeleteMeta && !selectedFolderDeleteMeta.disabled);
+  const uploadButtonLabel = 'Upload file';
 
   return (
-    <section className="panel file-manager prime">
-      <header className="panel-header">
-        <div>
+    <section className="files-workspace">
+      <header className="files-workspace__hero">
+        <div className="files-workspace__hero-summary">
           <h2>Knowledge Vault</h2>
-          <p className="muted">Curate private and shared knowledge spaces.</p>
+          <p className="files-workspace__hero-subtitle">Organize the documents Marble references during chat.</p>
         </div>
-        <div className="actions">
-          <button type="button" className="secondary" onClick={() => setShowFolderDialog(true)}>
+        <div className="files-workspace__hero-controls">
+          <div className="files-workspace__space-toggle" role="tablist" aria-label="Workspace visibility">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isOrgSpace}
+              className={!isOrgSpace ? 'is-active' : ''}
+              onClick={() => setVisibilityFilter('private')}
+            >
+              <span className="files-workspace__space-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                  <path
+                    d="M6.5 8.5V7a3.5 3.5 0 1 1 7 0v1.5h1.75c.41 0 .75.34.75.75v7c0 .41-.34.75-.75.75H4.75A.75.75 0 0 1 4 17.25v-7c0-.41.34-.75.75-.75H6.5Zm1.5 0h4V7a2 2 0 0 0-4 0v1.5Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              <span>Private</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isOrgSpace}
+              className={isOrgSpace ? 'is-active' : ''}
+              onClick={() => setVisibilityFilter('public')}
+            >
+              <span className="files-workspace__space-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                  <path
+                    d="M6.5 9a2.5 2.5 0 1 1 2.45 2.5H9a4 4 0 0 1 4 4v1a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 16.5v-1a4 4 0 0 1 4-4h.05A2.5 2.5 0 0 1 6.5 9Zm7.75-.5a2 2 0 1 1-1.6 3.2 4.01 4.01 0 0 1 2.35 3.3H17a.5.5 0 0 0 .5-.5v-.65a3.5 3.5 0 0 0-2.76-3.43 2 2 0 0 1-.49-1.37v-.55Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              <span>Org Shared</span>
+            </button>
+          </div>
+          <button type="button" onClick={() => setShowFolderDialog(true)}>
             New Folder
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowUpload(true)}
-            disabled={scopedFolders.length === 0}
-            title={scopedFolders.length === 0 ? 'Create a folder first' : undefined}
-          >
-            Upload
           </button>
         </div>
       </header>
 
       {alert && (
-        <div className={`banner ${alert.type}`}>
+        <div className={`files-workspace__alert files-workspace__alert--${alert.type}`}>
           <span>{alert.message}</span>
           <button type="button" onClick={() => setAlert(null)} aria-label="Dismiss notification">
             ×
@@ -508,107 +830,514 @@ export function FileManager({ currentUserId }: FileManagerProps) {
         </div>
       )}
 
-      <div className="file-toolbar">
-        <div className="segmented" role="tablist" aria-label="Visibility filter">
-          <button
-            type="button"
-            className={visibilityFilter === 'private' ? 'active' : ''}
-            onClick={() => setVisibilityFilter('private')}
-            role="tab"
-            aria-selected={visibilityFilter === 'private'}
-          >
-            My Files
-          </button>
-          <button
-            type="button"
-            className={visibilityFilter === 'public' ? 'active' : ''}
-            onClick={() => setVisibilityFilter('public')}
-            role="tab"
-            aria-selected={visibilityFilter === 'public'}
-          >
-            Org Shared
-          </button>
-        </div>
-        <div className="file-stats">
-          <div className="stat-card">
-            <span className="label">Folders</span>
-            <span className="value">{scopedFolders.length}</span>
-            <span className="meta">{folderMeta}</span>
+      <div className="files-workspace__grid">
+        <aside className="files-workspace__sidebar">
+          <div className="files-workspace__sidebar-header">
+            <span>{sidebarTitle}</span>
+            <span className="files-workspace__sidebar-count">{scopedFolders.length}</span>
           </div>
-          <div className="stat-card">
-            <span className="label">Documents</span>
-            <span className="value">{documentCountLabel}</span>
-            <span className="meta">{documentMeta}</span>
-          </div>
-        </div>
-      </div>
 
-      <div className="file-folders">
-        <span className="file-folders__label">Folders</span>
-        <div className="folders-bar">
           {scopedFolders.length === 0 ? (
-            <p className="muted">No folders yet. Create one to get started.</p>
+            <div className="files-workspace__sidebar-empty">
+              <p className="muted">No folders yet. Use the New Folder button above to get started.</p>
+            </div>
           ) : (
-            <ul>
-              {scopedFolders.map((folder) => (
-                <li key={folder.id}>
-                  <button
-                    className={selectedFolderId === folder.id ? 'active' : ''}
-                    onClick={() => setSelectedFolderId(folder.id)}
-                  >
-                    <span>{folder.name}</span>
-                    <span className="count">{folder.fileCount}</span>
-                  </button>
-                </li>
-              ))}
+            <ul className="files-workspace__folder-list">
+              {scopedFolders.map((folder) => {
+                const isActive = selectedFolderId === folder.id;
+                const canManage = folder.owner?.id === currentUserId && folder.visibility === 'private';
+                const { disabled, reason, requiresConfirm } = getFolderDeleteMeta(folder);
+                const isRenaming = folderRenameId === folder.id;
+                const menuOpen = activeFolderMenuId === folder.id;
+                return (
+                  <li key={folder.id}>
+                    {isRenaming ? (
+                      <form
+                        className="folder-rename"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          commitFolderRename();
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={folderRenameDraft}
+                          onChange={(event) => setFolderRenameDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                              event.preventDefault();
+                              cancelFolderRename();
+                            } else if (event.key === 'Enter') {
+                              event.preventDefault();
+                              commitFolderRename();
+                            }
+                          }}
+                          onBlur={commitFolderRename}
+                          disabled={folderRenameMutation.isPending}
+                        />
+                        <div className="folder-rename__actions">
+                          <button type="button" className="link" onClick={cancelFolderRename}>
+                            Cancel
+                          </button>
+                          <button type="submit" disabled={folderRenameMutation.isPending}>
+                            {folderRenameMutation.isPending ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className={`folder-row${isActive ? ' is-active' : ''}`}>
+                        <button
+                          type="button"
+                          className="folder-row__main"
+                          onClick={() => setSelectedFolderId(folder.id)}
+                        >
+                          <span className="folder-row__name">{folder.name}</span>
+                          <span className="folder-row__count">{folder.fileCount}</span>
+                        </button>
+                        {canManage && (
+                          <div className="folder-row__actions">
+                            <button
+                              type="button"
+                              className="icon-button"
+                              aria-haspopup="menu"
+                              aria-expanded={menuOpen}
+                              aria-label="Folder actions"
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setActiveFolderMenuId((prev) => (prev === folder.id ? null : folder.id));
+                              }}
+                            >
+                              <span aria-hidden="true">...</span>
+                            </button>
+                            {menuOpen && (
+                              <div
+                                className="folder-row__menu"
+                                role="menu"
+                                onPointerDown={(event) => event.stopPropagation()}
+                              >
+                                <button type="button" role="menuitem" onClick={() => startFolderRename(folder)}>
+                                  Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={disabled || deleteFolderMutation.isPending}
+                                  title={disabled ? reason : undefined}
+                                  onClick={() => {
+                                    if (requiresConfirm && typeof window !== 'undefined') {
+                                      const descriptor = folder.fileCount === 1 ? 'file' : 'files';
+                                      const confirmed = window.confirm(
+                                        `Delete "${folder.name}" and its ${folder.fileCount} ${descriptor}? This cannot be undone.`,
+                                      );
+                                      if (!confirmed) {
+                                        return;
+                                      }
+                                    }
+                                    deleteFolderMutation.mutate({
+                                      id: folder.id,
+                                      name: folder.name,
+                                      fileCount: folder.fileCount,
+                                    });
+                                  }}
+                                >
+                                  {deleteFolderMutation.isPending ? 'One moment…' : 'Delete'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
+          )}
+        </aside>
+
+        <div
+          className={`files-workspace__content${isDragging ? ' is-dragging' : ''}`}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragging && selectedFolder && (
+            <div className="files-workspace__drop-hint">
+              <span>Drop to upload into {selectedFolder.name}</span>
+            </div>
+          )}
+          <div className="files-workspace__content-header">
+            <div className="files-workspace__context" role="heading" aria-level={2}>
+              <span className="files-workspace__context-label">{spaceLabel}</span>
+              <span className="files-workspace__context-name">
+                {selectedFolder ? selectedFolder.name : 'Choose a folder'}
+              </span>
+            </div>
+            <div className="files-workspace__header-actions">
+              <div className="files-workspace__search">
+                <input
+                  type="search"
+                  placeholder="Search files"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
+              </div>
+              {selectedFileIds.length > 0 && (
+                <div className="files-workspace__bulk-actions">
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => bulkDeleteMutation.mutate(selectedFileIds)}
+                    disabled={bulkDeleteMutation.isPending}
+                  >
+                    {bulkDeleteMutation.isPending ? 'Deleting…' : `Delete ${selectedFileIds.length}`}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {selectedFolder && (
+            <div className="files-workspace__folder-toolbar" role="region" aria-label="Folder details and actions">
+              <div className="files-workspace__folder-toolbar-info">
+                <div className="files-workspace__folder-toolbar-meta">
+                  {selectedFolderUpdatedLabel && <span>{selectedFolderUpdatedLabel}</span>}
+                  {selectedFolderFileCountLabel && <span>{selectedFolderFileCountLabel}</span>}
+                  {selectedFolder.visibility === 'public' && selectedFolderOwnerLabel && (
+                    <span>Owner: {selectedFolderOwnerLabel}</span>
+                  )}
+                </div>
+                {selectedFolderDeleteMeta?.reason && selectedFolderDeleteMeta.disabled && (
+                  <p className="files-workspace__folder-toolbar-note files-workspace__folder-toolbar-note--muted">
+                    {selectedFolderDeleteMeta.reason}
+                  </p>
+                )}
+              </div>
+              <div className="files-workspace__folder-toolbar-actions">
+                <button type="button" onClick={() => setShowUpload(true)}>
+                  {uploadButtonLabel}
+                </button>
+                {canManageSelectedFolder && (
+                  <div className="files-workspace__folder-options">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-haspopup="menu"
+                      aria-expanded={isFolderToolbarMenuOpen}
+                      aria-label="Folder options"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsFolderToolbarMenuOpen((prev) => !prev);
+                      }}
+                    >
+                      <span aria-hidden="true">...</span>
+                    </button>
+                    {isFolderToolbarMenuOpen && (
+                      <div
+                        className="files-workspace__folder-options-menu"
+                        role="menu"
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            startFolderRename(selectedFolder);
+                            setIsFolderToolbarMenuOpen(false);
+                          }}
+                        >
+                          Rename folder
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="menu-danger"
+                          onClick={() => {
+                            if (!selectedFolder || !selectedFolderDeleteMeta || selectedFolderDeleteMeta.disabled) {
+                              return;
+                            }
+                            if (selectedFolderDeleteMeta.requiresConfirm && typeof window !== 'undefined') {
+                              const descriptor = selectedFolder.fileCount === 1 ? 'file' : 'files';
+                              const confirmed = window.confirm(
+                                `Delete "${selectedFolder.name}" and its ${selectedFolder.fileCount} ${descriptor}? This cannot be undone.`,
+                              );
+                              if (!confirmed) {
+                                return;
+                              }
+                            }
+                            deleteFolderMutation.mutate({
+                              id: selectedFolder.id,
+                              name: selectedFolder.name,
+                              fileCount: selectedFolder.fileCount,
+                            });
+                            setIsFolderToolbarMenuOpen(false);
+                          }}
+                          disabled={!canDeleteSelectedFolder || deleteFolderMutation.isPending}
+                          title={!canDeleteSelectedFolder ? selectedFolderDeleteMeta?.reason : undefined}
+                        >
+                          {deleteFolderMutation.isPending ? 'Deleting…' : 'Delete folder'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="files-workspace__meta">
+            <span>
+              {isLoadingFiles
+                ? 'Loading documents…'
+                : `Showing ${visibleFiles.length} ${visibleFiles.length === 1 ? 'item' : 'items'}`}
+            </span>
+            <div className="files-workspace__selection">
+              {selectedFileIds.length > 0 && (
+                <>
+                  <span>{selectedFileIds.length} selected</span>
+                  <button type="button" className="link" onClick={clearSelection}>
+                    Clear
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {isLoadingFiles ? (
+            <div className="files-workspace__loading">Loading documents…</div>
+          ) : visibleFiles.length === 0 ? (
+            <div className="files-workspace__empty">
+              <div className="files-workspace__empty-illustration" aria-hidden="true" />
+              <h3>
+                {selectedFolder
+                  ? 'No documents yet'
+                  : `No ${spaceLabel.toLowerCase()} folders yet`}
+              </h3>
+              <p>
+                {selectedFolder
+                  ? 'Upload a .txt file or drag and drop to stock this space.'
+                  : 'Use the New Folder button above to create a home for your documents.'}
+              </p>
+            </div>
+          ) : (
+            <div className="files-workspace__table-wrapper">
+              <table className="files-table">
+                <thead>
+                  <tr>
+                    <th className="files-table__select">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all manageable files"
+                        onChange={toggleSelectAll}
+                        checked={allSelectableSelected}
+                        disabled={selectableFiles.length === 0}
+                      />
+                    </th>
+                    <th aria-sort={getAriaSort('name')}>
+                      <button type="button" onClick={() => handleSort('name')}>
+                        Name
+                        <span aria-hidden="true">
+                          {sortField === 'name' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                        </span>
+                      </button>
+                    </th>
+                    <th aria-sort={getAriaSort('owner')}>
+                      <button type="button" onClick={() => handleSort('owner')}>
+                        Owner
+                        <span aria-hidden="true">
+                          {sortField === 'owner' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                        </span>
+                      </button>
+                    </th>
+                    {isOrgSpace && (
+                      <th aria-sort={getAriaSort('visibility')}>
+                        <button type="button" onClick={() => handleSort('visibility')}>
+                          Visibility
+                          <span aria-hidden="true">
+                            {sortField === 'visibility' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                          </span>
+                        </button>
+                      </th>
+                    )}
+                    <th aria-sort={getAriaSort('updatedAt')}>
+                      <button type="button" onClick={() => handleSort('updatedAt')}>
+                        Updated
+                        <span aria-hidden="true">
+                          {sortField === 'updatedAt' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="files-table__actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleFiles.map((file) => {
+                    const ownerLabel = file.owner.displayName ?? file.owner.email;
+                    const updatedLabel = timestampFormatter.format(new Date(file.updatedAt));
+                    const selected = selectedFileIds.includes(file.id);
+                    const canManage = isOwner(file);
+                    const menuOpen = activeFileMenuId === file.id;
+                    const isRenaming = inlineRenameId === file.id;
+                    const visibilityLabel = file.visibility === 'public' ? 'Org Shared' : 'Private';
+                    return (
+                      <tr key={file.id} className={selected ? 'is-selected' : undefined}>
+                        <td className="files-table__select">
+                          {canManage ? (
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleFileSelection(file.id)}
+                              aria-label={`Select ${file.name}`}
+                            />
+                          ) : (
+                            <span className="checkbox-placeholder" aria-hidden="true" />
+                          )}
+                        </td>
+                        <td>
+                          <div className="file-name-cell">
+                            <span className="file-name-cell__icon" aria-hidden="true" />
+                            <div className="file-name-cell__body">
+                              {isRenaming ? (
+                                <input
+                                  autoFocus
+                                  value={renameDraft}
+                                  onChange={(event) => setRenameDraft(event.target.value)}
+                                  onBlur={commitFileRename}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Escape') {
+                                      event.preventDefault();
+                                      cancelFileRename();
+                                    } else if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      commitFileRename();
+                                    }
+                                  }}
+                                  disabled={renameMutation.isPending}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="file-name-cell__name"
+                                  onClick={() =>
+                                    window.open(`${API_BASE}/api/files/${file.id}/download`, '_blank')?.focus?.()
+                                  }
+                                >
+                                  {file.name}
+                                </button>
+                              )}
+                              <div className="file-name-cell__meta">{file.folder.name}</div>
+                            </div>
+                            {file.status !== 'ready' && (
+                              <span
+                                className="file-name-cell__status"
+                                aria-label="Processing for search"
+                                title="Processing for search"
+                              >
+                                <span className="file-name-cell__status-dot" aria-hidden="true" />
+                                <span>Processing…</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        {isOrgSpace && (
+                          <td>
+                            <span className={`pill pill--${file.visibility}`}>{visibilityLabel}</span>
+                          </td>
+                        )}
+                        <td>{ownerLabel}</td>
+                        <td>{updatedLabel}</td>
+                        <td className="files-table__actions">
+                          <div className="file-row-actions">
+                            <button
+                              type="button"
+                              className="icon-button"
+                              aria-haspopup="menu"
+                              aria-expanded={menuOpen}
+                              aria-label="File actions"
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setActiveFileMenuId((prev) => (prev === file.id ? null : file.id));
+                              }}
+                            >
+                              <span aria-hidden="true">...</span>
+                            </button>
+                            {menuOpen && (
+                              <div
+                                className="file-row-actions__menu"
+                                role="menu"
+                                onPointerDown={(event) => event.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    window
+                                      .open(`${API_BASE}/api/files/${file.id}/download`, '_blank')
+                                      ?.focus?.();
+                                    setActiveFileMenuId(null);
+                                  }}
+                                >
+                                  Open
+                                </button>
+                                {canManage && (
+                                  <>
+                                    <button type="button" role="menuitem" onClick={() => startFileRename(file)}>
+                                      Rename
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        toggleVisibilityMutation.mutate({
+                                          id: file.id,
+                                          visibility: file.visibility === 'public' ? 'private' : 'public',
+                                        });
+                                        setActiveFileMenuId(null);
+                                      }}
+                                    >
+                                      Make {file.visibility === 'public' ? 'Private' : 'Org Shared'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => deleteMutation.mutate(file.id)}
+                                    >
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
-
-      <div className="file-collection">
-        <span className="file-folders__label">Documents</span>
-        {fileListContent}
-      </div>
-
-      {renamingFile && (
-        <div className="dialog-backdrop" role="dialog" aria-modal="true">
-          <div className="dialog-card">
-            <header>
-              <h3>Rename File</h3>
-            </header>
-            <div className="dialog-body">
-              <input
-                type="text"
-                value={renamingFile.name}
-                onChange={(event) => setRenamingFile({ ...renamingFile, name: event.target.value })}
-              />
-            </div>
-            <footer className="dialog-footer">
-              <button type="button" className="link" onClick={() => setRenamingFile(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!renamingFile.name.trim()) return;
-                  renameMutation.mutate({ id: renamingFile.id, name: renamingFile.name.trim() });
-                }}
-              >
-                {renameMutation.isPending ? 'Saving…' : 'Save'}
-              </button>
-            </footer>
-          </div>
-        </div>
-      )}
 
       <UploadDialog
         open={showUpload}
         visibility={visibilityFilter}
         folders={folders}
+        defaultFolderId={selectedFolder?.id ?? null}
         onClose={() => setShowUpload(false)}
         onUpload={({ file, folderId, visibility, name }) => {
-          uploadMutation.mutate({ file, folderId, visibility, name });
+          uploadMutation.mutate({
+            file,
+            folderId,
+            folderName: folders.find((folder) => folder.id === folderId)?.name,
+            visibility,
+            name,
+          });
         }}
         isUploading={uploadMutation.isPending}
       />

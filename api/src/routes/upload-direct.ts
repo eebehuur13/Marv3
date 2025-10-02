@@ -6,6 +6,7 @@ import {
   ensureFolder,
   getFolder,
 } from '../lib/db';
+import { ingestFileById } from '../lib/ingestion';
 
 function sanitizeFileName(fileName: string): string {
   return fileName
@@ -36,16 +37,19 @@ export async function handleUploadDirect(c: AppContext) {
     throw new HTTPException(400, { message: 'Only .txt files are supported' });
   }
 
-  let folder = await getFolder(env, folderId);
+  let folder = await getFolder(env, folderId, user.tenant);
   if (!folder) {
     await ensureFolder(
       env,
-      folderId,
-      folderName,
-      visibility,
-      visibility === 'public' ? null : user.id
+      {
+        id: folderId,
+        tenant: user.tenant,
+        name: folderName,
+        visibility,
+        ownerId: visibility === 'public' ? null : user.id,
+      },
     );
-    folder = await getFolder(env, folderId);
+    folder = await getFolder(env, folderId, user.tenant);
   }
   if (!folder) {
     throw new HTTPException(500, { message: 'Unable to resolve folder' });
@@ -74,14 +78,31 @@ export async function handleUploadDirect(c: AppContext) {
   // Create DB record (ready)
   await createFileRecord(env, {
     id: fileId,
-    folder_id: folderId,
-    owner_id: user.id,
+    tenant: user.tenant,
+    folderId,
+    ownerId: user.id,
     visibility,
-    file_name: fileName,
-    r2_key: key,
-    size: text.length, // or parseInt(sizeParam||'0')
-    status: 'ready',
+    fileName,
+    r2Key: key,
+    size: sizeParam ? Number.parseInt(sizeParam, 10) || text.length : text.length,
+    status: 'uploading',
+    mimeType: contentType,
   });
+
+  const triggerIngestion = async () => {
+    try {
+      await ingestFileById(env, fileId, user.id);
+    } catch (error) {
+      console.error('Background ingestion failed (upload-direct)', { fileId, error });
+    }
+  };
+  if (c.executionCtx) {
+    c.executionCtx.waitUntil(triggerIngestion());
+  } else {
+    triggerIngestion().catch((error) => {
+      console.error('Ingestion error (no waitUntil)', { fileId, error });
+    });
+  }
 
   return c.json({ fileId, key, uploaded: true });
 }

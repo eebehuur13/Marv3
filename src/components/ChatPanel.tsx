@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { sendChat, type ChatResponse } from '../lib/api';
 
@@ -20,6 +20,7 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [knowledgeMode, setKnowledgeMode] = useState(false);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
@@ -68,10 +69,15 @@ export function ChatPanel() {
     },
   });
 
+  useEffect(() => {
+    const container = messagesRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+  }, [messages]);
+
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitPrompt = () => {
     if (!prompt.trim()) return;
     const id = crypto.randomUUID();
     const question = prompt.trim();
@@ -92,92 +98,127 @@ export function ChatPanel() {
     mutation.mutate({ id, question, knowledge: knowledgeMode });
   };
 
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitPrompt();
+  };
+
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      submitPrompt();
+    }
+  };
+
   return (
-    <section className="panel chat-panel prime">
-      <header className="panel-header">
+    <section className="chat-panel">
+      <header className="chat-panel__header">
         <div>
           <h2>Conversational Search</h2>
-          <p className="muted">Chat naturally and blend in workspace knowledge when you need it.</p>
+          <p className="chat-panel__subtitle">Switch between pure model answers and workspace-aware replies.</p>
         </div>
-        <div className="chat-controls">
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={knowledgeMode}
-              onChange={(event) => setKnowledgeMode(event.target.checked)}
-            />
-            <span>Knowledge Mode</span>
-          </label>
-          <small>{knowledgeMode ? 'Referencing org and private folders.' : 'Staying model-only.'}</small>
+        <div className="chat-panel__mode">
+          <div className="chat-panel__mode-toggle" role="tablist" aria-label="Response mode">
+            <button
+              type="button"
+              role="tab"
+              className={!knowledgeMode ? 'active' : ''}
+              aria-selected={!knowledgeMode}
+              onClick={() => setKnowledgeMode(false)}
+            >
+              Model-only
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={knowledgeMode ? 'active' : ''}
+              aria-selected={knowledgeMode}
+              onClick={() => setKnowledgeMode(true)}
+            >
+              Knowledge Mode
+            </button>
+          </div>
+          <small className="chat-panel__hint-text">
+            {knowledgeMode ? 'Includes org and private sources.' : 'No documents referenced.'}
+          </small>
         </div>
       </header>
 
-      {status && <div className="banner info">{status}</div>}
+      {status && <div className="chat-panel__banner">{status}</div>}
 
-      <div className={`messages ${hasMessages ? '' : 'empty'}`}>
+      <div className={`chat-panel__messages${hasMessages ? '' : ' chat-panel__messages--empty'}`} ref={messagesRef}>
         {hasMessages ? (
           messages.map((message) => (
-            <article key={message.id} className={`message ${message.status}`}>
-              <div className="message__prompt">
-                <span className="message__avatar user">You</span>
-                <div>
-                  <p className="message__prompt-text">{message.prompt}</p>
-                </div>
+            <div key={message.id} className="chat-thread">
+              <div className="chat-bubble chat-bubble--user">
+                <header className="chat-bubble__meta">
+                  <span className="chat-bubble__role">You</span>
+                </header>
+                <p>{message.prompt}</p>
               </div>
-              <div className="message__response">
-                <span className="message__avatar assistant">Marv</span>
-                <div className="message__body">
-                  {message.knowledgeMode && <span className="badge info message__badge">Knowledge Mode</span>}
-                  {message.status === 'error' ? (
-                    <p className="error-text">{message.error}</p>
-                  ) : (
-                    <p>{message.answer || 'Generating…'}</p>
-                  )}
-                  {message.citations.length > 0 && (
-                    <ul className="citations">
-                      {message.citations.map((citation, index) => (
-                        <li key={`${message.id}-${index}`}>
-                          <strong>#{index + 1}</strong> {citation.folder} / {citation.file} · lines {citation.lines[0]}–
-                          {citation.lines[1]}
+
+              <div
+                className={`chat-bubble chat-bubble--assistant chat-bubble--${message.status}${
+                  message.knowledgeMode ? ' chat-bubble--knowledge' : ''
+                }`}
+              >
+                <header className="chat-bubble__meta">
+                  <span className="chat-bubble__role">Marble</span>
+                  {message.knowledgeMode && <span className="chat-bubble__badge">Knowledge</span>}
+                </header>
+                {message.status === 'error' ? (
+                  <p className="chat-bubble__error">{message.error}</p>
+                ) : (
+                  <p>{message.answer || 'Generating…'}</p>
+                )}
+                {message.citations.length > 0 && (
+                  <ul className="chat-bubble__citations">
+                    {message.citations.map((citation, index) => (
+                      <li key={`${message.id}-${index}`}>
+                        <strong>#{index + 1}</strong> {citation.folder} / {citation.file} · lines {citation.lines[0]}–
+                        {citation.lines[1]}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {message.sources.length > 0 && (
+                  <details className="chat-bubble__sources">
+                    <summary>Supporting chunks</summary>
+                    <ul>
+                      {message.sources.map((source) => (
+                        <li key={source.chunkId}>
+                          <strong>
+                            {source.folderName} / {source.fileName} · lines {source.startLine}–{source.endLine}
+                          </strong>
+                          <pre>{source.content}</pre>
                         </li>
                       ))}
                     </ul>
-                  )}
-                  {message.sources.length > 0 && (
-                    <details className="sources-disclosure">
-                      <summary>Supporting Chunks</summary>
-                      <ul className="sources">
-                        {message.sources.map((source) => (
-                          <li key={source.chunkId}>
-                            <strong>
-                              {source.folderName} / {source.fileName} · lines {source.startLine}–{source.endLine}
-                            </strong>
-                            <pre>{source.content}</pre>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </div>
+                  </details>
+                )}
               </div>
-            </article>
+            </div>
           ))
         ) : (
-          <p className="placeholder">Flip on knowledge mode to reference uploads, or chat freely without it.</p>
+          <p className="chat-panel__placeholder">Start chatting about your files.</p>
         )}
       </div>
 
-      <form className="chat-input" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Ask something…"
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          disabled={mutation.isPending}
-        />
-        <button type="submit" disabled={mutation.isPending || !prompt.trim()}>
-          Send
-        </button>
+      <form className="chat-panel__composer" onSubmit={handleSubmit}>
+        <div className="chat-panel__composer-inner">
+          <textarea
+            rows={1}
+            placeholder="Ask something…"
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            disabled={mutation.isPending}
+          />
+          <button type="submit" disabled={mutation.isPending || !prompt.trim()}>
+            Send
+          </button>
+        </div>
+        <div className="chat-panel__composer-hint">Enter to send · Shift+Enter for a new line</div>
       </form>
     </section>
   );
