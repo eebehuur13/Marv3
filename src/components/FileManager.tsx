@@ -1203,7 +1203,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                         disabled={selectableFiles.length === 0}
                       />
                     </th>
-                    <th aria-sort={getAriaSort('name')}>
+                    <th className="files-table__name" aria-sort={getAriaSort('name')}>
                       <button type="button" onClick={() => handleSort('name')}>
                         Name
                         <span aria-hidden="true">
@@ -1211,7 +1211,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                         </span>
                       </button>
                     </th>
-                    <th aria-sort={getAriaSort('owner')}>
+                    <th className="files-table__owner" aria-sort={getAriaSort('owner')}>
                       <button type="button" onClick={() => handleSort('owner')}>
                         Owner
                         <span aria-hidden="true">
@@ -1220,7 +1220,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                       </button>
                     </th>
                     {isOrgSpace && (
-                      <th aria-sort={getAriaSort('visibility')}>
+                      <th className="files-table__visibility" aria-sort={getAriaSort('visibility')}>
                         <button type="button" onClick={() => handleSort('visibility')}>
                           Visibility
                           <span aria-hidden="true">
@@ -1229,7 +1229,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                         </button>
                       </th>
                     )}
-                    <th aria-sort={getAriaSort('updatedAt')}>
+                    <th className="files-table__updated" aria-sort={getAriaSort('updatedAt')}>
                       <button type="button" onClick={() => handleSort('updatedAt')}>
                         Updated
                         <span aria-hidden="true">
@@ -1263,9 +1263,8 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                             <span className="checkbox-placeholder" aria-hidden="true" />
                           )}
                         </td>
-                        <td>
+                        <td className="files-table__name">
                           <div className="file-name-cell">
-                            <span className="file-name-cell__icon" aria-hidden="true" />
                             <div className="file-name-cell__body">
                               {isRenaming ? (
                                 <input
@@ -1285,17 +1284,15 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                                   disabled={renameMutation.isPending}
                                 />
                               ) : (
-                                <button
-                                  type="button"
+                                <a
                                   className="file-name-cell__name"
-                                  onClick={() =>
-                                    window.open(`${API_BASE}/api/files/${file.id}/download`, '_blank')?.focus?.()
-                                  }
+                                  href={`${API_BASE}/api/files/${file.id}/download`}
+                                  target="_blank"
+                                  rel="noreferrer"
                                 >
                                   {file.name}
-                                </button>
+                                </a>
                               )}
-                              <div className="file-name-cell__meta">{file.folder.name}</div>
                             </div>
                             {file.status !== 'ready' && (
                               <span
@@ -1310,12 +1307,12 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                           </div>
                         </td>
                         {isOrgSpace && (
-                          <td>
+                          <td className="files-table__visibility">
                             <span className={`pill pill--${file.visibility}`}>{visibilityLabel}</span>
                           </td>
                         )}
-                        <td>{ownerLabel}</td>
-                        <td>{updatedLabel}</td>
+                        <td className="files-table__owner">{ownerLabel}</td>
+                        <td className="files-table__updated">{updatedLabel}</td>
                         <td className="files-table__actions">
                           <div className="file-row-actions">
                             <button
