@@ -119,8 +119,8 @@ export function ChatPanel() {
     <section className="chat-panel">
       <header className="chat-panel__header">
         <div>
-          <h2>Conversational Search</h2>
-          <p className="chat-panel__subtitle">Switch between pure model answers and workspace-aware replies.</p>
+          <h2>Your Knowledge Assistant</h2>
+          <p className="chat-panel__subtitle">Toggle between pure model insights and answers grounded in your documents.</p>
         </div>
         <div className="chat-panel__mode">
           <div className="chat-panel__mode-toggle" role="tablist" aria-label="Response mode">
@@ -131,7 +131,7 @@ export function ChatPanel() {
               aria-selected={!knowledgeMode}
               onClick={() => setKnowledgeMode(false)}
             >
-              Model-only
+              AI only
             </button>
             <button
               type="button"
@@ -140,11 +140,13 @@ export function ChatPanel() {
               aria-selected={knowledgeMode}
               onClick={() => setKnowledgeMode(true)}
             >
-              Knowledge Mode
+              With My Files
             </button>
           </div>
           <small className="chat-panel__hint-text">
-            {knowledgeMode ? 'Includes org and private sources.' : 'No documents referenced.'}
+            {knowledgeMode
+              ? 'Answers grounded in your private & shared documents.'
+              : 'Pure model answers.'}
           </small>
           {hasMessages && (
             <button type="button" className="link chat-panel__clear" onClick={clearChat}>
@@ -174,7 +176,7 @@ export function ChatPanel() {
               >
                 <header className="chat-bubble__meta">
                   <span className="chat-bubble__role">Marble</span>
-                  {message.knowledgeMode && <span className="chat-bubble__badge">Knowledge</span>}
+                  {message.knowledgeMode && <span className="chat-bubble__badge">With My Files</span>}
                 </header>
                 {message.status === 'error' ? (
                   <p className="chat-bubble__error">{message.error}</p>
@@ -210,7 +212,9 @@ export function ChatPanel() {
             </div>
           ))
         ) : (
-          <p className="chat-panel__placeholder">Start chatting about your files.</p>
+          <p className="chat-panel__placeholder">
+            {knowledgeMode ? 'Ask Marble about your documents.' : 'Start chatting with Marble.'}
+          </p>
         )}
       </div>
 

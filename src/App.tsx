@@ -6,7 +6,7 @@ import { ChatPanel } from './components/ChatPanel';
 
 const queryClient = new QueryClient();
 
-type ActiveView = 'chat' | 'vault';
+type ActiveView = 'chat' | 'vault' | 'about';
 
 function Dashboard() {
   const { data, isLoading, isError, error } = useQuery({ queryKey: ['session'], queryFn: fetchSession });
@@ -76,7 +76,7 @@ function Dashboard() {
           <span className="brand-mark">M</span>
           <div>
             <h1>Welcome to Marble</h1>
-            <p>Your calm command center for collective knowledge.</p>
+            <p>Your workspace for connected thinking.</p>
           </div>
         </div>
         {user && (
@@ -104,22 +104,32 @@ function Dashboard() {
       </header>
       <main className="app-body">
         <aside className="primary-nav" aria-label="Workspace navigation">
-          <button
-            type="button"
-            className={activeView === 'chat' ? 'active' : ''}
-            onClick={() => setActiveView('chat')}
-          >
-            <span>Chat</span>
-            <small>Ask Marble</small>
-          </button>
-          <button
-            type="button"
-            className={activeView === 'vault' ? 'active' : ''}
-            onClick={() => setActiveView('vault')}
-          >
-            <span>Knowledge Vault</span>
-            <small>Files & Folders</small>
-          </button>
+          <div className="primary-nav__list">
+            <button
+              type="button"
+              className={activeView === 'chat' ? 'active' : ''}
+              onClick={() => setActiveView('chat')}
+            >
+              <span>Ask Marble</span>
+            </button>
+            <button
+              type="button"
+              className={activeView === 'vault' ? 'active' : ''}
+              onClick={() => setActiveView('vault')}
+            >
+              <span>Files &amp; Folders</span>
+            </button>
+          </div>
+          <div className="primary-nav__about-card">
+            <h3>About Marble</h3>
+            <p>
+              Marble keeps your team’s knowledge connected. Upload documents, organise them into shared or private
+              spaces, and ask Marble for grounded answers whenever you need context.
+            </p>
+            <button type="button" onClick={() => setActiveView('about')}>
+              Learn more
+            </button>
+          </div>
         </aside>
         <section className="app-content">
           <div
@@ -135,6 +145,47 @@ function Dashboard() {
             aria-hidden={activeView !== 'vault'}
           >
             {user ? <FileManager currentUserId={user.id} /> : null}
+          </div>
+          <div
+            className={`app-pane${activeView === 'about' ? ' is-active' : ''}`}
+            hidden={activeView !== 'about'}
+            aria-hidden={activeView !== 'about'}
+          >
+            <section className="about-panel">
+              <header className="about-panel__header">
+                <h2>Meet Marble</h2>
+                <p>Bring documents, context, and answers together in a workspace built for connected thinking.</p>
+              </header>
+              <div className="about-panel__grid">
+                <article>
+                  <h3>Organise what matters</h3>
+                  <p>
+                    Keep private research and shared reference material in the same vault. Folders stay under your
+                    control while the rest of the org can discover approved docs.
+                  </p>
+                </article>
+                <article>
+                  <h3>Search meets conversation</h3>
+                  <p>
+                    Ask Marble for fast summaries, citations, and supporting quotes pulled directly from the files you
+                    choose to publish.
+                  </p>
+                </article>
+                <article>
+                  <h3>Publish with confidence</h3>
+                  <p>
+                    Toggle files or entire folders between private and shared visibility. Ownership stays with you, so
+                    only the author can update or remove content.
+                  </p>
+                </article>
+              </div>
+              <footer className="about-panel__footer">
+                <p className="about-panel__signature">Designed &amp; Built by Harish Adithya.</p>
+                <button type="button" className="secondary" onClick={() => setActiveView('chat')}>
+                  Back to Ask Marble
+                </button>
+              </footer>
+            </section>
           </div>
         </section>
       </main>

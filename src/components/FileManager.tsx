@@ -834,8 +834,8 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     <section className="files-workspace">
       <header className="files-workspace__hero">
         <div className="files-workspace__hero-summary">
-          <h2>Knowledge Vault</h2>
-          <p className="files-workspace__hero-subtitle">Organize the documents Marble references during chat.</p>
+          <h2>Files &amp; Folders</h2>
+          <p className="files-workspace__hero-subtitle">Curate the documents Marble references across your workspace.</p>
         </div>
         <div className="files-workspace__hero-controls">
           <div className="files-workspace__space-toggle" role="tablist" aria-label="Workspace visibility">
