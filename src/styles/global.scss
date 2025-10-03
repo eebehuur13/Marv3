@@ -582,6 +582,7 @@ textarea {
   box-shadow: var(--shadow-ambient);
   backdrop-filter: blur(18px);
   min-height: 0;
+  flex: 1;
 }
 
 .files-workspace__hero {
@@ -845,6 +846,7 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1;
 }
 
 .files-workspace__content.is-dragging {
