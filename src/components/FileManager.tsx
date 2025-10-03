@@ -1183,11 +1183,9 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                   ? 'No documents yet'
                   : `No ${spaceLabel.toLowerCase()} folders yet`}
               </h3>
-              <p>
-                {selectedFolder
-                  ? 'Upload a .txt file or drag and drop to stock this space.'
-                  : 'Use the New Folder button below to create a home for your documents.'}
-              </p>
+              {selectedFolder && (
+                <p>Upload a .txt file or drag and drop to stock this space.</p>
+              )}
             </div>
           ) : (
             <div className="files-workspace__table-wrapper">
