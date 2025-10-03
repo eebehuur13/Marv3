@@ -39,6 +39,7 @@ export async function handleUploadDirect(c: AppContext) {
 
   let folder = await getFolder(env, folderId, user.tenant);
   if (!folder) {
+    const ownerForFolder = folderId === 'public-root' ? null : user.id;
     await ensureFolder(
       env,
       {
@@ -46,7 +47,7 @@ export async function handleUploadDirect(c: AppContext) {
         tenant: user.tenant,
         name: folderName,
         visibility,
-        ownerId: visibility === 'public' ? null : user.id,
+        ownerId: ownerForFolder,
       },
     );
     folder = await getFolder(env, folderId, user.tenant);
@@ -55,7 +56,7 @@ export async function handleUploadDirect(c: AppContext) {
     throw new HTTPException(500, { message: 'Unable to resolve folder' });
   }
 
-  assertFolderVisibility(folder, user.id);
+  assertFolderVisibility(folder, user.id, 'write');
 
   const fileId = crypto.randomUUID();
   const safeName = sanitizeFileName(fileName);

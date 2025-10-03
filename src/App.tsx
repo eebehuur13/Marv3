@@ -122,7 +122,20 @@ function Dashboard() {
           </button>
         </aside>
         <section className="app-content">
-          {activeView === 'chat' ? <ChatPanel /> : user && <FileManager currentUserId={user.id} />}
+          <div
+            className={`app-pane${activeView === 'chat' ? ' is-active' : ''}`}
+            hidden={activeView !== 'chat'}
+            aria-hidden={activeView !== 'chat'}
+          >
+            <ChatPanel />
+          </div>
+          <div
+            className={`app-pane${activeView === 'vault' ? ' is-active' : ''}`}
+            hidden={activeView !== 'vault'}
+            aria-hidden={activeView !== 'vault'}
+          >
+            {user ? <FileManager currentUserId={user.id} /> : null}
+          </div>
         </section>
       </main>
     </div>

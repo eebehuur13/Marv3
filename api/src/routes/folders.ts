@@ -153,16 +153,10 @@ export function registerFolderRoutes(api: Hono<AppEnv>) {
       throw new HTTPException(404, { message: 'Folder not found' });
     }
 
-    if (folder.visibility === 'public') {
-      throw new HTTPException(403, { message: 'Shared folders are managed centrally and cannot be deleted.' });
-    }
+    assertFolderAccess(folder, user.id, 'write');
 
     if (folder.id === 'public-root' || folder.id === 'private-root') {
       throw new HTTPException(403, { message: 'System folders cannot be removed.' });
-    }
-
-    if (folder.owner_id && folder.owner_id !== user.id) {
-      throw new HTTPException(403, { message: 'You can only delete folders you own.' });
     }
 
     const files = await listFiles(c.env, {

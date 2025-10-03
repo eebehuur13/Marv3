@@ -419,6 +419,11 @@ textarea {
   min-height: 0;
 }
 
+.app-pane {
+  min-height: 0;
+  height: 100%;
+}
+
 .files-workspace {
   display: flex;
   flex-direction: column;
@@ -561,6 +566,16 @@ textarea {
   gap: 0.5rem;
   overflow-y: auto;
   min-height: 0;
+  flex: 1;
+}
+
+.files-workspace__sidebar-footer {
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.files-workspace__sidebar-footer button {
+  width: 100%;
 }
 
 .folder-row {
@@ -1158,6 +1173,11 @@ textarea {
 .chat-panel__hint-text {
   font-size: 0.8rem;
   color: var(--color-text-muted);
+}
+
+.chat-panel__clear {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.35rem;
 }
 
 .chat-panel__banner {

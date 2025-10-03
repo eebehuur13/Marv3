@@ -98,6 +98,7 @@ export async function handleCreateFile(c: AppContext) {
   let folder = await getFolderById(c.env, folderId, user.tenant);
 
   if (!folder) {
+    const ownerForFolder = folderId === 'public-root' ? null : user.id;
     await ensureFolder(c.env, {
       id: folderId,
       tenant: user.tenant,
@@ -105,12 +106,12 @@ export async function handleCreateFile(c: AppContext) {
         ? (form.get('folderName') as string).trim()
         : 'Untitled',
       visibility: requestedVisibility,
-      ownerId: requestedVisibility === 'public' ? null : user.id,
+      ownerId: ownerForFolder,
     });
     folder = await getFolderById(c.env, folderId, user.tenant);
   }
 
-  assertFolderAccess(folder, user.id);
+  assertFolderAccess(folder, user.id, 'write');
 
   if (folder.visibility !== requestedVisibility) {
     throw new HTTPException(400, {

@@ -43,25 +43,47 @@ export async function getFolder(env: MarbleBindings, folderId: string, tenant: s
   return folder;
 }
 
-export function assertFolderVisibility(folder: FolderRecord, userId: string): void {
-  if (folder.deleted_at) {
-    throw new HTTPException(404, { message: 'Folder not found' });
-  }
-  if (folder.visibility === 'public') {
-    return;
-  }
-  if (folder.owner_id !== userId) {
-    throw new HTTPException(403, { message: 'Folder is private to another user' });
-  }
-}
+type FolderAccessScope = FolderRecord | FolderWithOwner;
 
-export function assertFolderAccess(folder: FolderWithOwner | null, userId: string): asserts folder is FolderWithOwner {
+function assertFolderPresence<T extends FolderAccessScope | null>(
+  folder: T,
+): asserts folder is Exclude<T, null> {
   if (!folder || folder.deleted_at) {
     throw new HTTPException(404, { message: 'Folder not found' });
   }
-  if (folder.visibility === 'private' && folder.owner_id !== userId) {
+}
+
+function isFolderOwner(folder: FolderAccessScope, userId: string): boolean {
+  return folder.owner_id === userId;
+}
+
+export function assertFolderVisibility<T extends FolderAccessScope | null>(
+  folder: T,
+  userId: string,
+  mode: 'read' | 'write' = 'read',
+): asserts folder is Exclude<T, null> {
+  assertFolderPresence(folder);
+
+  if (folder.visibility === 'private' && !isFolderOwner(folder, userId)) {
     throw new HTTPException(403, { message: 'Folder is private to another user' });
   }
+
+  if (mode === 'write' && folder.visibility === 'public') {
+    if (folder.owner_id && !isFolderOwner(folder, userId)) {
+      throw new HTTPException(403, { message: 'Only the folder owner can modify this shared folder' });
+    }
+    if (!folder.owner_id && folder.id === 'public-root') {
+      throw new HTTPException(403, { message: 'The shared root folder is read-only.' });
+    }
+  }
+}
+
+export function assertFolderAccess(
+  folder: FolderWithOwner | null,
+  userId: string,
+  mode: 'read' | 'write' = 'read',
+): asserts folder is FolderWithOwner {
+  assertFolderVisibility(folder, userId, mode);
 }
 
 export interface ListFoldersOptions {

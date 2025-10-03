@@ -77,6 +77,11 @@ export function ChatPanel() {
 
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
+  const clearChat = () => {
+    setMessages([]);
+    setStatus(null);
+  };
+
   const submitPrompt = () => {
     if (!prompt.trim()) return;
     const id = crypto.randomUUID();
@@ -141,6 +146,11 @@ export function ChatPanel() {
           <small className="chat-panel__hint-text">
             {knowledgeMode ? 'Includes org and private sources.' : 'No documents referenced.'}
           </small>
+          {hasMessages && (
+            <button type="button" className="link chat-panel__clear" onClick={clearChat}>
+              Clear chat
+            </button>
+          )}
         </div>
       </header>
 

@@ -15,6 +15,8 @@ import {
   uploadFile,
 } from '../lib/api';
 
+const VAULT_VISIBILITY_STORAGE_KEY = 'marble-vault-visibility';
+
 interface FileManagerProps {
   currentUserId: string;
 }
@@ -205,20 +207,24 @@ interface FolderDialogProps {
   onClose: () => void;
   onCreate: (args: { name: string; visibility: Visibility }) => void;
   isSaving: boolean;
+  defaultVisibility: Visibility;
 }
 
-function FolderDialog({ open, onClose, onCreate, isSaving }: FolderDialogProps) {
+function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility }: FolderDialogProps) {
   const [name, setName] = useState('');
-  const [visibility, setVisibility] = useState<Visibility>('private');
+  const [visibility, setVisibility] = useState<Visibility>(defaultVisibility);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
       setName('');
-      setVisibility('private');
       setError(null);
+      return;
     }
-  }, [open]);
+    setName('');
+    setError(null);
+    setVisibility(defaultVisibility);
+  }, [open, defaultVisibility]);
 
   if (!open) return null;
 
@@ -288,7 +294,13 @@ function FolderDialog({ open, onClose, onCreate, isSaving }: FolderDialogProps) 
 type FileSortField = 'name' | 'owner' | 'visibility' | 'updatedAt';
 
 export function FileManager({ currentUserId }: FileManagerProps) {
-  const [visibilityFilter, setVisibilityFilter] = useState<Visibility>('private');
+  const [visibilityFilter, setVisibilityFilter] = useState<Visibility>(() => {
+    if (typeof window === 'undefined') {
+      return 'private';
+    }
+    const stored = window.sessionStorage.getItem(VAULT_VISIBILITY_STORAGE_KEY);
+    return stored === 'public' ? 'public' : 'private';
+  });
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<FileSortField>('updatedAt');
@@ -311,6 +323,26 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     if (typeof window === 'undefined') {
       return;
     }
+    window.sessionStorage.setItem(VAULT_VISIBILITY_STORAGE_KEY, visibilityFilter);
+  }, [visibilityFilter]);
+
+  function canManageFolder(folder: FolderSummary | null): boolean {
+    if (!folder) {
+      return false;
+    }
+    if (folder.visibility === 'public') {
+      return folder.owner?.id === currentUserId;
+    }
+    if (!folder.owner?.id) {
+      return true;
+    }
+    return folder.owner.id === currentUserId;
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
     const closeMenus = () => {
       setActiveFileMenuId(null);
       setActiveFolderMenuId(null);
@@ -327,6 +359,11 @@ export function FileManager({ currentUserId }: FileManagerProps) {
 
   const folders: FolderSummary[] = foldersQuery.data?.folders ?? [];
 
+  const manageableFolders = useMemo(
+    () => folders.filter((folder) => canManageFolder(folder)),
+    [folders, currentUserId],
+  );
+
   const privateFolders = useMemo(
     () => folders.filter((folder) => folder.visibility === 'private'),
     [folders],
@@ -342,9 +379,10 @@ export function FileManager({ currentUserId }: FileManagerProps) {
       if (prev && scoped.some((folder) => folder.id === prev)) {
         return prev;
       }
-      return scoped[0]?.id ?? null;
+      const preferred = scoped.find((folder) => canManageFolder(folder)) ?? scoped[0];
+      return preferred ? preferred.id : null;
     });
-  }, [visibilityFilter, privateFolders, publicFolders]);
+  }, [visibilityFilter, privateFolders, publicFolders, currentUserId]);
 
   useEffect(() => {
     setIsFolderToolbarMenuOpen(false);
@@ -673,13 +711,21 @@ export function FileManager({ currentUserId }: FileManagerProps) {
   };
 
   const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!selectedFolder) return;
+    const target = selectedFolder;
+    if (!target || !canManageFolder(target)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'none';
+      setIsDragging(false);
+      return;
+    }
     event.preventDefault();
     setIsDragging(true);
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!selectedFolder) {
+    const target = selectedFolder;
+    if (!target || !canManageFolder(target)) {
+      event.preventDefault();
       event.dataTransfer.dropEffect = 'none';
       return;
     }
@@ -705,6 +751,17 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     if (!targetFolder) {
       setIsDragging(false);
       setAlert({ type: 'error', message: 'Pick a folder before uploading.' });
+      return;
+    }
+    if (!canManageFolder(targetFolder)) {
+      setIsDragging(false);
+      setAlert({
+        type: 'error',
+        message:
+          targetFolder.visibility === 'public'
+            ? 'Only the folder owner can upload to this shared folder.'
+            : 'You do not have permission to upload to this folder.',
+      });
       return;
     }
     setIsDragging(false);
@@ -742,8 +799,12 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     if (folder.id === 'public-root' || folder.id === 'private-root') {
       return { disabled: true, reason: 'This folder is required by Marble.', requiresConfirm: false };
     }
-    if (folder.owner && folder.owner.id !== currentUserId) {
-      return { disabled: true, reason: 'Only the folder owner can manage this space.', requiresConfirm: false };
+    if (!canManageFolder(folder)) {
+      const reason =
+        folder.visibility === 'public'
+          ? 'Shared folders you do not own are view-only.'
+          : 'Only the folder owner can manage this space.';
+      return { disabled: true, reason, requiresConfirm: false };
     }
     return {
       disabled: false,
@@ -765,9 +826,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     ? `${selectedFolder.fileCount} ${selectedFolder.fileCount === 1 ? 'file' : 'files'}`
     : null;
   const selectedFolderDeleteMeta = selectedFolder ? getFolderDeleteMeta(selectedFolder) : null;
-  const canManageSelectedFolder = Boolean(
-    selectedFolder && (!selectedFolder.owner?.id || selectedFolder.owner.id === currentUserId),
-  );
+  const canManageSelectedFolder = canManageFolder(selectedFolder);
   const canDeleteSelectedFolder = Boolean(canManageSelectedFolder && selectedFolderDeleteMeta && !selectedFolderDeleteMeta.disabled);
   const uploadButtonLabel = 'Upload file';
 
@@ -815,9 +874,6 @@ export function FileManager({ currentUserId }: FileManagerProps) {
               <span>Org Shared</span>
             </button>
           </div>
-          <button type="button" onClick={() => setShowFolderDialog(true)}>
-            New Folder
-          </button>
         </div>
       </header>
 
@@ -839,13 +895,13 @@ export function FileManager({ currentUserId }: FileManagerProps) {
 
           {scopedFolders.length === 0 ? (
             <div className="files-workspace__sidebar-empty">
-              <p className="muted">No folders yet. Use the New Folder button above to get started.</p>
+              <p className="muted">No folders yet. Use the New Folder button below to get started.</p>
             </div>
           ) : (
             <ul className="files-workspace__folder-list">
               {scopedFolders.map((folder) => {
                 const isActive = selectedFolderId === folder.id;
-                const canManage = folder.owner?.id === currentUserId && folder.visibility === 'private';
+                const canManage = canManageFolder(folder);
                 const { disabled, reason, requiresConfirm } = getFolderDeleteMeta(folder);
                 const isRenaming = folderRenameId === folder.id;
                 const menuOpen = activeFolderMenuId === folder.id;
@@ -954,6 +1010,12 @@ export function FileManager({ currentUserId }: FileManagerProps) {
               })}
             </ul>
           )}
+
+          <div className="files-workspace__sidebar-footer">
+            <button type="button" className="secondary" onClick={() => setShowFolderDialog(true)}>
+              New Folder
+            </button>
+          </div>
         </aside>
 
         <div
@@ -1016,7 +1078,12 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                 )}
               </div>
               <div className="files-workspace__folder-toolbar-actions">
-                <button type="button" onClick={() => setShowUpload(true)}>
+                <button
+                  type="button"
+                  onClick={() => setShowUpload(true)}
+                  disabled={!canManageSelectedFolder}
+                  title={!canManageSelectedFolder ? 'Uploads are limited to folders you own.' : undefined}
+                >
                   {uploadButtonLabel}
                 </button>
                 {canManageSelectedFolder && (
@@ -1119,7 +1186,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
               <p>
                 {selectedFolder
                   ? 'Upload a .txt file or drag and drop to stock this space.'
-                  : 'Use the New Folder button above to create a home for your documents.'}
+                  : 'Use the New Folder button below to create a home for your documents.'}
               </p>
             </div>
           ) : (
@@ -1327,7 +1394,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
       <UploadDialog
         open={showUpload}
         visibility={visibilityFilter}
-        folders={folders}
+        folders={manageableFolders}
         defaultFolderId={selectedFolder?.id ?? null}
         onClose={() => setShowUpload(false)}
         onUpload={({ file, folderId, visibility, name }) => {
@@ -1347,6 +1414,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
         onClose={() => setShowFolderDialog(false)}
         onCreate={({ name, visibility }) => createFolderMutation.mutate({ name, visibility })}
         isSaving={createFolderMutation.isPending}
+        defaultVisibility={visibilityFilter}
       />
     </section>
   );
