@@ -1036,6 +1036,12 @@ export function FileManager({ currentUserId }: FileManagerProps) {
               <span className="files-workspace__context-name">
                 {selectedFolder ? selectedFolder.name : 'Choose a folder'}
               </span>
+              {selectedFolder && (
+                <div className="files-workspace__context-meta">
+                  {selectedFolderUpdatedLabel && <span>{selectedFolderUpdatedLabel}</span>}
+                  {selectedFolderFileCountLabel && <span>{selectedFolderFileCountLabel}</span>}
+                </div>
+              )}
             </div>
             <div className="files-workspace__header-actions">
               <div className="files-workspace__search">
@@ -1046,47 +1052,28 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
               </div>
-              {selectedFileIds.length > 0 && (
-                <div className="files-workspace__bulk-actions">
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => bulkDeleteMutation.mutate(selectedFileIds)}
-                    disabled={bulkDeleteMutation.isPending}
-                  >
-                    {bulkDeleteMutation.isPending ? 'Deleting…' : `Delete ${selectedFileIds.length}`}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {selectedFolder && (
-            <div className="files-workspace__folder-toolbar" role="region" aria-label="Folder details and actions">
-              <div className="files-workspace__folder-toolbar-info">
-                <div className="files-workspace__folder-toolbar-meta">
-                  {selectedFolderUpdatedLabel && <span>{selectedFolderUpdatedLabel}</span>}
-                  {selectedFolderFileCountLabel && <span>{selectedFolderFileCountLabel}</span>}
-                  {selectedFolder.visibility === 'public' && selectedFolderOwnerLabel && (
-                    <span>Owner: {selectedFolderOwnerLabel}</span>
-                  )}
-                </div>
-                {selectedFolderDeleteMeta?.reason && selectedFolderDeleteMeta.disabled && (
-                  <p className="files-workspace__folder-toolbar-note files-workspace__folder-toolbar-note--muted">
-                    {selectedFolderDeleteMeta.reason}
-                  </p>
+              <div className="files-workspace__action-buttons">
+                {selectedFileIds.length > 0 && (
+                  <div className="files-workspace__bulk-actions">
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => bulkDeleteMutation.mutate(selectedFileIds)}
+                      disabled={bulkDeleteMutation.isPending}
+                    >
+                      {bulkDeleteMutation.isPending ? 'Deleting…' : `Delete ${selectedFileIds.length}`}
+                    </button>
+                  </div>
                 )}
-              </div>
-              <div className="files-workspace__folder-toolbar-actions">
                 <button
                   type="button"
                   onClick={() => setShowUpload(true)}
-                  disabled={!canManageSelectedFolder}
-                  title={!canManageSelectedFolder ? 'Uploads are limited to folders you own.' : undefined}
+                  disabled={!selectedFolder || !canManageSelectedFolder}
+                  title={!selectedFolder ? 'Choose a folder first.' : !canManageSelectedFolder ? 'Uploads are limited to folders you own.' : undefined}
                 >
                   {uploadButtonLabel}
                 </button>
-                {canManageSelectedFolder && (
+                {selectedFolder && canManageSelectedFolder && (
                   <div className="files-workspace__folder-options">
                     <button
                       type="button"
@@ -1123,7 +1110,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                           role="menuitem"
                           className="menu-danger"
                           onClick={() => {
-                            if (!selectedFolder || !selectedFolderDeleteMeta || selectedFolderDeleteMeta.disabled) {
+                            if (!selectedFolderDeleteMeta || selectedFolderDeleteMeta.disabled) {
                               return;
                             }
                             if (selectedFolderDeleteMeta.requiresConfirm && typeof window !== 'undefined') {
@@ -1142,8 +1129,8 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                             });
                             setIsFolderToolbarMenuOpen(false);
                           }}
-                          disabled={!canDeleteSelectedFolder || deleteFolderMutation.isPending}
-                          title={!canDeleteSelectedFolder ? selectedFolderDeleteMeta?.reason : undefined}
+                          disabled={selectedFolderDeleteMeta?.disabled}
+                          title={selectedFolderDeleteMeta?.reason}
                         >
                           {deleteFolderMutation.isPending ? 'Deleting…' : 'Delete folder'}
                         </button>
@@ -1153,7 +1140,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                 )}
               </div>
             </div>
-          )}
+          </div>
 
           <div className="files-workspace__meta">
             <span>
