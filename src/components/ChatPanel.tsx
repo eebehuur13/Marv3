@@ -239,24 +239,29 @@ export function ChatPanel() {
               ? 'Answers grounded in your private & shared documents.'
               : 'Pure model answers.'}
           </small>
-          {hasMessages && (
-            <button type="button" className="link chat-panel__clear" onClick={clearChat}>
-              Clear chat
-            </button>
-          )}
         </div>
-        <button
-          type="button"
-          className="chat-panel__fullscreen-toggle"
-          onClick={() => setIsFullscreen((prev) => !prev)}
-          aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Enter fullscreen chat'}
-          title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-        >
-          {isFullscreen ? '✕' : '⤢'}
-        </button>
+        {hasMessages && (
+          <button
+            type="button"
+            className="chat-panel__fullscreen-toggle"
+            onClick={() => setIsFullscreen((prev) => !prev)}
+            aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Enter fullscreen chat'}
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? '✕' : '⤢'}
+          </button>
+        )}
       </header>
 
       {status && <div className="chat-panel__banner">{status}</div>}
+
+      {hasMessages && (
+        <div className="chat-panel__actions-row">
+          <button type="button" className="link" onClick={clearChat}>
+            Clear chat
+          </button>
+        </div>
+      )}
 
       <div className={`chat-panel__messages${hasMessages ? '' : ' chat-panel__messages--empty'}`} ref={messagesRef}>
         {hasMessages ? (
@@ -332,7 +337,7 @@ export function ChatPanel() {
             Send
           </button>
         </div>
-      <div className="chat-panel__composer-hint">Enter to send · Shift+Enter for a new line</div>
+        <div className="chat-panel__composer-hint">Enter to send · Shift+Enter for a new line</div>
       </form>
     </section>
   );
