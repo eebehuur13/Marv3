@@ -208,12 +208,13 @@ export function ChatPanel() {
 
   return (
     <section className={`chat-panel${isFullscreen ? ' chat-panel--fullscreen' : ''}`}>
-      <header className="chat-panel__header">
-        <div>
-          <h2>Your Knowledge Assistant</h2>
-          <p className="chat-panel__subtitle">Toggle between pure model insights and answers grounded in your documents.</p>
-        </div>
-        <div className="chat-panel__mode">
+      {!isFullscreen && (
+        <header className="chat-panel__header">
+          <div>
+            <h2>Your Knowledge Assistant</h2>
+            <p className="chat-panel__subtitle">Toggle between pure model insights and answers grounded in your documents.</p>
+          </div>
+          <div className="chat-panel__mode">
           <div className="chat-panel__mode-toggle" role="tablist" aria-label="Response mode">
             <button
               type="button"
@@ -234,13 +235,14 @@ export function ChatPanel() {
               With My Files
             </button>
           </div>
-          <small className="chat-panel__hint-text">
-            {knowledgeMode
-              ? 'Answers grounded in your private & shared documents.'
-              : 'Pure model answers.'}
-          </small>
-        </div>
-      </header>
+            <small className="chat-panel__hint-text">
+              {knowledgeMode
+                ? 'Answers grounded in your private & shared documents.'
+                : 'Pure model answers.'}
+            </small>
+          </div>
+        </header>
+      )}
       <div className="chat-panel__body">
         {hasMessages && (
           <button
@@ -256,7 +258,7 @@ export function ChatPanel() {
 
         {status && <div className="chat-panel__banner">{status}</div>}
 
-        {hasMessages && (
+        {hasMessages && !isFullscreen && (
           <div className="chat-panel__actions-row">
             <button type="button" className="link" onClick={clearChat}>
               Clear chat
