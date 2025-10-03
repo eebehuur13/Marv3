@@ -240,6 +240,8 @@ export function ChatPanel() {
               : 'Pure model answers.'}
           </small>
         </div>
+      </header>
+      <div className="chat-panel__body">
         {hasMessages && (
           <button
             type="button"
@@ -251,21 +253,20 @@ export function ChatPanel() {
             {isFullscreen ? '✕' : '⤢'}
           </button>
         )}
-      </header>
 
-      {status && <div className="chat-panel__banner">{status}</div>}
+        {status && <div className="chat-panel__banner">{status}</div>}
 
-      {hasMessages && (
-        <div className="chat-panel__actions-row">
-          <button type="button" className="link" onClick={clearChat}>
-            Clear chat
-          </button>
-        </div>
-      )}
+        {hasMessages && (
+          <div className="chat-panel__actions-row">
+            <button type="button" className="link" onClick={clearChat}>
+              Clear chat
+            </button>
+          </div>
+        )}
 
-      <div className={`chat-panel__messages${hasMessages ? '' : ' chat-panel__messages--empty'}`} ref={messagesRef}>
-        {hasMessages ? (
-      messages.map((message) => (
+        <div className={`chat-panel__messages${hasMessages ? '' : ' chat-panel__messages--empty'}`} ref={messagesRef}>
+          {hasMessages ? (
+            messages.map((message) => (
         <div key={message.id} className="chat-thread">
           <div className="chat-bubble chat-bubble--user">
             <header className="chat-bubble__meta">
@@ -316,11 +317,12 @@ export function ChatPanel() {
               </div>
             </div>
           ))
-        ) : (
-          <p className="chat-panel__placeholder">
-            {knowledgeMode ? 'Ask Marble about your documents.' : 'Start chatting with Marble.'}
-          </p>
-        )}
+          ) : (
+            <p className="chat-panel__placeholder">
+              {knowledgeMode ? 'Ask Marble about your documents.' : 'Start chatting with Marble.'}
+            </p>
+          )}
+        </div>
       </div>
 
       <form className="chat-panel__composer" onSubmit={handleSubmit}>

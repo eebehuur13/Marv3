@@ -1302,7 +1302,6 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1.25rem;
-  position: relative;
 }
 
 .chat-panel__header h2 {
@@ -1316,10 +1315,18 @@ textarea {
   font-weight: 400;
 }
 
+.chat-panel__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-panel__fullscreen-toggle {
   position: absolute;
-  top: 1.2rem;
-  right: 1.5rem;
+  top: 1.1rem;
+  right: 1.75rem;
   width: 36px;
   height: 36px;
   display: inline-flex;
@@ -1362,6 +1369,10 @@ textarea {
   padding: 2rem 2.5rem 1.5rem;
 }
 
+.chat-panel--fullscreen .chat-panel__body {
+  padding: 0 0.75rem;
+}
+
 .chat-panel--fullscreen .chat-panel__messages {
   padding: 2rem 2.5rem;
 }
@@ -1371,7 +1382,7 @@ textarea {
 }
 
 .chat-panel--fullscreen .chat-panel__fullscreen-toggle {
-  top: 1.8rem;
+  top: 2rem;
   right: 2.5rem;
   border-radius: 50%;
   background: rgba(15, 23, 42, 0.1);
