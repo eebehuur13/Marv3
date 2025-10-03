@@ -1077,52 +1077,62 @@ export function FileManager({ currentUserId }: FileManagerProps) {
             </div>
           </div>
 
-          <div className="files-workspace__meta">
-            <span>
-              {isLoadingFiles
-                ? 'Loading documents…'
-                : `Showing ${visibleFiles.length} ${visibleFiles.length === 1 ? 'item' : 'items'}`}
-            </span>
-            <div className="files-workspace__selection">
-              {selectedFileIds.length > 0 && (
-                <>
-                  <span>{selectedFileIds.length} selected</span>
-                  <button type="button" className="link" onClick={clearSelection}>
-                    Clear
-                  </button>
-                </>
-              )}
+          <div className="files-workspace__body">
+            <div className="files-workspace__meta">
+              <span>
+                {isLoadingFiles
+                  ? 'Loading documents…'
+                  : `Showing ${visibleFiles.length} ${visibleFiles.length === 1 ? 'item' : 'items'}`}
+              </span>
+              <div className="files-workspace__selection">
+                {selectedFileIds.length > 0 && (
+                  <>
+                    <span>{selectedFileIds.length} selected</span>
+                    <button type="button" className="link" onClick={clearSelection}>
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
 
-          {isLoadingFiles ? (
-            <div className="files-workspace__loading">Loading documents…</div>
-          ) : visibleFiles.length === 0 ? (
-            <div className="files-workspace__empty">
-              <div className="files-workspace__empty-illustration" aria-hidden="true" />
-              <h3>
-                {selectedFolder
-                  ? 'No documents yet'
-                  : `No ${spaceLabel.toLowerCase()} folders yet`}
-              </h3>
-              {selectedFolder && (
-                <p>Upload a .txt file or drag and drop to stock this space.</p>
-              )}
-            </div>
-          ) : (
-            <div className="files-workspace__table-wrapper">
-              <table className="files-table">
-                <thead>
-                  <tr>
-                    <th className="files-table__select">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all manageable files"
-                        onChange={toggleSelectAll}
-                        checked={allSelectableSelected}
-                        disabled={selectableFiles.length === 0}
-                      />
-                    </th>
+            {alert && (
+              <div className={`files-workspace__alert files-workspace__alert--${alert.type}`}>
+                <span>{alert.message}</span>
+                <button type="button" onClick={() => setAlert(null)} aria-label="Dismiss notification">
+                  ×
+                </button>
+              </div>
+            )}
+
+            {isLoadingFiles ? (
+              <div className="files-workspace__loading">Loading documents…</div>
+            ) : visibleFiles.length === 0 ? (
+              <div className="files-workspace__empty">
+                <div className="files-workspace__empty-illustration" aria-hidden="true" />
+                <h3>
+                  {selectedFolder
+                    ? 'No documents yet'
+                    : `No ${spaceLabel.toLowerCase()} folders yet`}
+                </h3>
+                {selectedFolder && (
+                  <p>Upload a .txt file or drag and drop to stock this space.</p>
+                )}
+              </div>
+            ) : (
+              <div className="files-workspace__table-wrapper">
+                <table className="files-table">
+                  <thead>
+                    <tr>
+                      <th className="files-table__select">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all manageable files"
+                          onChange={toggleSelectAll}
+                          checked={allSelectableSelected}
+                          disabled={selectableFiles.length === 0}
+                        />
+                      </th>
                     <th className="files-table__name" aria-sort={getAriaSort('name')}>
                       <button type="button" onClick={() => handleSort('name')}>
                         Name
