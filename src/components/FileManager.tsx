@@ -1071,73 +1071,8 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                   disabled={!selectedFolder || !canManageSelectedFolder}
                   title={!selectedFolder ? 'Choose a folder first.' : !canManageSelectedFolder ? 'Uploads are limited to folders you own.' : undefined}
                 >
-                  {uploadButtonLabel}
+                  Upload File
                 </button>
-                {selectedFolder && canManageSelectedFolder && (
-                  <div className="files-workspace__folder-options">
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-haspopup="menu"
-                      aria-expanded={isFolderToolbarMenuOpen}
-                      aria-label="Folder options"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setIsFolderToolbarMenuOpen((prev) => !prev);
-                      }}
-                    >
-                      <span aria-hidden="true">...</span>
-                    </button>
-                    {isFolderToolbarMenuOpen && (
-                      <div
-                        className="files-workspace__folder-options-menu"
-                        role="menu"
-                        onPointerDown={(event) => event.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            startFolderRename(selectedFolder);
-                            setIsFolderToolbarMenuOpen(false);
-                          }}
-                        >
-                          Rename folder
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="menu-danger"
-                          onClick={() => {
-                            if (!selectedFolderDeleteMeta || selectedFolderDeleteMeta.disabled) {
-                              return;
-                            }
-                            if (selectedFolderDeleteMeta.requiresConfirm && typeof window !== 'undefined') {
-                              const descriptor = selectedFolder.fileCount === 1 ? 'file' : 'files';
-                              const confirmed = window.confirm(
-                                `Delete "${selectedFolder.name}" and its ${selectedFolder.fileCount} ${descriptor}? This cannot be undone.`,
-                              );
-                              if (!confirmed) {
-                                return;
-                              }
-                            }
-                            deleteFolderMutation.mutate({
-                              id: selectedFolder.id,
-                              name: selectedFolder.name,
-                              fileCount: selectedFolder.fileCount,
-                            });
-                            setIsFolderToolbarMenuOpen(false);
-                          }}
-                          disabled={selectedFolderDeleteMeta?.disabled}
-                          title={selectedFolderDeleteMeta?.reason}
-                        >
-                          {deleteFolderMutation.isPending ? 'Deleting…' : 'Delete folder'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </div>
