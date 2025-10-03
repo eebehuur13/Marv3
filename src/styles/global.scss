@@ -1384,6 +1384,36 @@ textarea {
   gap: 1.35rem;
 }
 
+.chat-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.chat-answer__heading {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.chat-answer__paragraph {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--color-text-default);
+}
+
+.chat-answer__list {
+  margin: 0;
+  padding-left: 1.35rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.chat-answer__list li {
+  line-height: 1.5;
+  color: var(--color-text-default);
+}
+
 .chat-panel__messages--empty {
   align-items: center;
   justify-content: center;

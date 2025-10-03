@@ -2,6 +2,83 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { sendChat, type ChatResponse } from '../lib/api';
 
+type AnswerBlock =
+  | { type: 'heading'; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'list'; ordered: boolean; items: string[] };
+
+function structureAnswer(answer: string): AnswerBlock[] {
+  const lines = answer.split(/\r?\n/);
+  const blocks: AnswerBlock[] = [];
+  let paragraphBuffer: string[] = [];
+  let currentList: { ordered: boolean; items: string[] } | null = null;
+
+  const flushParagraph = () => {
+    if (!paragraphBuffer.length) return;
+    const text = paragraphBuffer.join(' ').trim();
+    if (text) {
+      blocks.push({ type: 'paragraph', text });
+    }
+    paragraphBuffer = [];
+  };
+
+  const flushList = () => {
+    if (currentList && currentList.items.length) {
+      blocks.push({ type: 'list', ordered: currentList.ordered, items: currentList.items });
+    }
+    currentList = null;
+  };
+
+  lines.forEach((raw) => {
+    const line = raw.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    const headingMatch = /^([A-Za-z0-9].{0,96}?)\s*:\s*$/.exec(line);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: 'heading', text: headingMatch[1] });
+      return;
+    }
+
+    const unorderedMatch = /^[-*•]\s+(.*)$/.exec(line);
+    if (unorderedMatch) {
+      flushParagraph();
+      const item = unorderedMatch[1].trim();
+      if (!currentList || currentList.ordered) {
+        flushList();
+        currentList = { ordered: false, items: [] };
+      }
+      if (item) currentList.items.push(item);
+      return;
+    }
+
+    const orderedMatch = /^(\d+)[.)]\s+(.*)$/.exec(line);
+    if (orderedMatch) {
+      flushParagraph();
+      const item = orderedMatch[2].trim();
+      if (!currentList || !currentList.ordered) {
+        flushList();
+        currentList = { ordered: true, items: [] };
+      }
+      if (item) currentList.items.push(item);
+      return;
+    }
+
+    flushList();
+    paragraphBuffer.push(line);
+  });
+
+  flushParagraph();
+  flushList();
+
+  return blocks;
+}
+
 interface ChatMessage {
   id: string;
   prompt: string;
@@ -160,11 +237,11 @@ export function ChatPanel() {
 
       <div className={`chat-panel__messages${hasMessages ? '' : ' chat-panel__messages--empty'}`} ref={messagesRef}>
         {hasMessages ? (
-          messages.map((message) => (
-            <div key={message.id} className="chat-thread">
-              <div className="chat-bubble chat-bubble--user">
-                <header className="chat-bubble__meta">
-                  <span className="chat-bubble__role">You</span>
+      messages.map((message) => (
+        <div key={message.id} className="chat-thread">
+          <div className="chat-bubble chat-bubble--user">
+            <header className="chat-bubble__meta">
+              <span className="chat-bubble__role">You</span>
                 </header>
                 <p>{message.prompt}</p>
               </div>
@@ -174,20 +251,20 @@ export function ChatPanel() {
                   message.knowledgeMode ? ' chat-bubble--knowledge' : ''
                 }`}
               >
-                <header className="chat-bubble__meta">
-                  <span className="chat-bubble__role">Marble</span>
-                  {message.knowledgeMode && <span className="chat-bubble__badge">With My Files</span>}
-                </header>
-                {message.status === 'error' ? (
-                  <p className="chat-bubble__error">{message.error}</p>
-                ) : (
-                  <p>{message.answer || 'Generating…'}</p>
-                )}
-                {message.citations.length > 0 && (
-                  <ul className="chat-bubble__citations">
-                    {message.citations.map((citation, index) => (
-                      <li key={`${message.id}-${index}`}>
-                        <strong>#{index + 1}</strong> {citation.folder} / {citation.file} · lines {citation.lines[0]}–
+              <header className="chat-bubble__meta">
+                <span className="chat-bubble__role">Marble</span>
+                {message.knowledgeMode && <span className="chat-bubble__badge">With My Files</span>}
+              </header>
+              {message.status === 'error' ? (
+                <p className="chat-bubble__error">{message.error}</p>
+              ) : (
+                <AnswerContent answer={message.answer} />
+              )}
+              {message.citations.length > 0 && (
+                <ul className="chat-bubble__citations">
+                  {message.citations.map((citation, index) => (
+                    <li key={`${message.id}-${index}`}>
+                      <strong>#{index + 1}</strong> {citation.folder} / {citation.file} · lines {citation.lines[0]}–
                         {citation.lines[1]}
                       </li>
                     ))}
@@ -235,5 +312,46 @@ export function ChatPanel() {
         <div className="chat-panel__composer-hint">Enter to send · Shift+Enter for a new line</div>
       </form>
     </section>
+  );
+}
+
+function AnswerContent({ answer }: { answer: string }) {
+  const blocks = useMemo(() => structureAnswer(answer), [answer]);
+
+  if (!answer.trim()) {
+    return <p>Generating…</p>;
+  }
+
+  if (!blocks.length) {
+    return <p>{answer}</p>;
+  }
+
+  return (
+    <div className="chat-answer">
+      {blocks.map((block, index) => {
+        if (block.type === 'heading') {
+          return (
+            <p key={`heading-${index}`} className="chat-answer__heading">
+              {block.text}
+            </p>
+          );
+        }
+        if (block.type === 'list') {
+          const ListTag = block.ordered ? 'ol' : 'ul';
+          return (
+            <ListTag key={`list-${index}`} className="chat-answer__list">
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{item}</li>
+              ))}
+            </ListTag>
+          );
+        }
+        return (
+          <p key={`paragraph-${index}`} className="chat-answer__paragraph">
+            {block.text}
+          </p>
+        );
+      })}
+    </div>
   );
 }
