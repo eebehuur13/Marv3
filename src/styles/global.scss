@@ -272,7 +272,6 @@ textarea {
 }
 
 .app-shell {
-  height: 100vh;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -369,7 +368,6 @@ textarea {
   grid-template-columns: 240px minmax(0, 1fr);
   align-items: stretch;
   gap: 2rem;
-  height: 100%;
 }
 
 .primary-nav {
@@ -382,7 +380,6 @@ textarea {
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
-  height: 100%;
 }
 
 .primary-nav__list {
@@ -558,17 +555,9 @@ textarea {
   min-height: 0;
   display: grid;
   grid-template-rows: 1fr;
-  height: 100%;
 }
 
 .app-pane {
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.app-pane > .chat-panel {
-  height: 100%;
   min-height: 0;
 }
 
@@ -1258,7 +1247,6 @@ textarea {
   box-shadow: var(--shadow-ambient);
   backdrop-filter: blur(18px);
   min-height: 0;
-  height: 100%;
 }
 
 .chat-panel__header {

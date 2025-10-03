@@ -1317,6 +1317,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
           )}
         </div>
       </div>
+      </div>
 
       <UploadDialog
         open={showUpload}
