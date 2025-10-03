@@ -567,7 +567,7 @@ textarea {
   overflow: hidden;
 }
 
-.app-pane > * {
+.app-pane > .chat-panel {
   height: 100%;
   min-height: 0;
 }
@@ -582,7 +582,6 @@ textarea {
   box-shadow: var(--shadow-ambient);
   backdrop-filter: blur(18px);
   min-height: 0;
-  height: 100%;
 }
 
 .files-workspace__hero {
