@@ -97,6 +97,7 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [knowledgeMode, setKnowledgeMode] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -107,6 +108,19 @@ export function ChatPanel() {
   useEffect(() => {
     localStorage.setItem(KNOWLEDGE_STORAGE_KEY, knowledgeMode ? 'true' : 'false');
   }, [knowledgeMode]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const className = 'chat-fullscreen-active';
+    if (isFullscreen) {
+      document.body.classList.add(className);
+    } else {
+      document.body.classList.remove(className);
+    }
+    return () => {
+      document.body.classList.remove(className);
+    };
+  }, [isFullscreen]);
 
   const mutation = useMutation({
     mutationFn: async ({ id, question, knowledge }: { id: string; question: string; knowledge: boolean }) => {
@@ -193,7 +207,7 @@ export function ChatPanel() {
   };
 
   return (
-    <section className="chat-panel">
+    <section className={`chat-panel${isFullscreen ? ' chat-panel--fullscreen' : ''}`}>
       <header className="chat-panel__header">
         <div>
           <h2>Your Knowledge Assistant</h2>
@@ -231,6 +245,15 @@ export function ChatPanel() {
             </button>
           )}
         </div>
+        <button
+          type="button"
+          className="chat-panel__fullscreen-toggle"
+          onClick={() => setIsFullscreen((prev) => !prev)}
+          aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Enter fullscreen chat'}
+          title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+        >
+          {isFullscreen ? '✕' : '⤢'}
+        </button>
       </header>
 
       {status && <div className="chat-panel__banner">{status}</div>}
@@ -309,7 +332,7 @@ export function ChatPanel() {
             Send
           </button>
         </div>
-        <div className="chat-panel__composer-hint">Enter to send · Shift+Enter for a new line</div>
+      <div className="chat-panel__composer-hint">Enter to send · Shift+Enter for a new line</div>
       </form>
     </section>
   );
