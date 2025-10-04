@@ -71,9 +71,9 @@ export interface ChatResponse {
 
 // --- Base URL from env ---
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE ?? '').trim();
-const FALLBACK_API_BASE = 'https://strategicfork.xyz';
+const FALLBACK_API_BASE = 'http://127.0.0.1:8787';
 const RAW_APP_BASE = (import.meta.env.VITE_APP_BASE ?? '').trim();
-const FALLBACK_APP_BASE = 'https://strategicfork.xyz';
+const FALLBACK_APP_BASE = 'http://localhost:5173';
 
 function stripTrailingSlash(value: string): string {
   if (!value) return value;

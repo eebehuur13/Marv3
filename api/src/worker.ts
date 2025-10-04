@@ -26,9 +26,7 @@ import { registerFolderRoutes } from './routes/folders';
 const app = new Hono<AppEnv>();
 
 const DEFAULT_ALLOWED_ORIGINS = [
-  'https://strategicfork.xyz',
-  'https://marv2-app.pages.dev',
-  'https://marv2.eebehuur13.workers.dev',
+  'https://siematap.xyz',
   'http://localhost:5173',
 ];
 

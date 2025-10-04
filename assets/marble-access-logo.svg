@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Marble Access Logo</title>
+  <desc id="desc">Rounded square gradient badge with the letter M for Marble</desc>
+  <defs>
+    <linearGradient id="marble-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6056f8" />
+      <stop offset="100%" stop-color="#ff9f68" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="56" fill="url(#marble-accent)" />
+  <path
+    d="M34 92L34 36L48 36L64 70L80 36L94 36L94 92L82 92L82 54L64 92L46 54L46 92Z"
+    fill="#ffffff"
+  />
+</svg>

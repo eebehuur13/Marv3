@@ -1,8 +1,12 @@
-name = "marv2-api"
+name = "marv3"
 account_id = "e1fc4922f78222b947a9c549529329aa"
 main = "api/src/worker.ts"
 compatibility_date = "2024-05-13"
 compatibility_flags = ["nodejs_compat"]
+routes = [
+  { pattern = "siematap.xyz/api/*", zone_name = "siematap.xyz" }
+]
+workers_dev = true
 
 [vars]
 VECTOR_TOP_K = "8"
@@ -13,65 +17,17 @@ OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 [[d1_databases]]
 binding = "MARBLE_DB"
-database_name = "marv2_db"
-database_id = "c032b0ae-c7ec-4fcd-8aa1-288d37a1afde"
+database_name = "marv3_db"
+database_id = "f48ac66f-6a89-42b1-ae83-da464216c47a"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "MARBLE_FILES"
-bucket_name = "marv2-files"
+bucket_name = "marv3-files"
 
 [[vectorize]]
 binding = "MARBLE_VECTORS"
-index_name = "marv2-index"
+index_name = "marv3-index"
 
 [observability.logs]
 enabled = true
-
-[env.staging]
-name = "marv2-staging"
-
-[env.staging.vars]
-VECTOR_TOP_K = "8"
-CHUNK_SIZE = "1500"
-CHUNK_OVERLAP = "200"
-OPENAI_MODEL = "gpt-5-mini-2025-08-07"
-OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-
-[[env.staging.d1_databases]]
-binding = "MARBLE_DB"
-database_name = "marv2_db"
-database_id = "c032b0ae-c7ec-4fcd-8aa1-288d37a1afde"
-migrations_dir = "migrations"
-
-[[env.staging.r2_buckets]]
-binding = "MARBLE_FILES"
-bucket_name = "marv2-files"
-
-[[env.staging.vectorize]]
-binding = "MARBLE_VECTORS"
-index_name = "marv2-index"
-
-[env.prod]
-name = "marv2"
-
-[env.prod.vars]
-VECTOR_TOP_K = "8"
-CHUNK_SIZE = "1500"
-CHUNK_OVERLAP = "200"
-OPENAI_MODEL = "gpt-5-mini-2025-08-07"
-OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-
-[[env.prod.d1_databases]]
-binding = "MARBLE_DB"
-database_name = "marv2_db"
-database_id = "c032b0ae-c7ec-4fcd-8aa1-288d37a1afde"
-migrations_dir = "migrations"
-
-[[env.prod.r2_buckets]]
-binding = "MARBLE_FILES"
-bucket_name = "marv2-files"
-
-[[env.prod.vectorize]]
-binding = "MARBLE_VECTORS"
-index_name = "marv2-index"

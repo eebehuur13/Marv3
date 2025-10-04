@@ -25,7 +25,7 @@ npm install
 ```
 
 ## Configure Cloudflare bindings
-1. Edit `wrangler.toml` and replace the stub `database_id`, `bucket_name`, and `index_name` with your resource IDs.
+1. Edit `wrangler.toml` and replace the stub `database_id`, `bucket_name`, and `index_name` in the marv3 configuration with your resource IDs before deploying.
 2. Decide how you want to handle auth during development:
    - **No Access (default):** do nothing. The Worker injects a `dev-user` identity for every request.
    - **Cloudflare Access:** set these secrets so `authenticateRequest` will enforce tokens:
@@ -77,14 +77,21 @@ Tests use the mocks in `tests/helpers/` to simulate R2, D1, Vectorize, and OpenA
 
 ## Deploying
 ```bash
-# Deploy the Worker (updates the production script bound to strategicfork.xyz)
-npx wrangler@4 deploy --env prod
+# Deploy the marv3 Worker
+npx wrangler@4 deploy
 
 # Build the SPA (deploy to Pages or your static host)
 cd frontend
 npm run build
 ```
-Point your static hosting to the Vite build output. If you protect the app with Cloudflare Access, serve the SPA and `/api` Worker on the same eTLD+1 (e.g. `https://strategicfork.xyz` and `https://strategicfork.xyz/api/*`) so the Access cookie remains first-party; otherwise browsers will drop it on fetch/XHR requests.
+Create a Cloudflare Pages project (for example `marv3-app`) that points to the built `dist/` output. Add the resulting hostname to your Access policy and set the `ALLOWED_ORIGIN` secret (production uses `https://siematap.xyz`).
+Point your static hosting to the Vite build output. If you protect the app with Cloudflare Access, serve the SPA and `/api` Worker on the same eTLD+1 (for production we route both through `https://siematap.xyz` and `https://siematap.xyz/api/*`) so the Access cookie remains first-party; otherwise browsers will drop it on fetch/XHR requests.
+
+### Cloudflare Access branding
+Keep the Access login page consistent with the in-app Marble styling:
+- Logo assets live in `assets/marble-access-logo.{svg,png}`.
+- Recommended colors, copy, and rollback notes are in `docs/access-branding.md`.
+- Update the team appearance and the specific Access application for your production hostname together so users see the same look before and after signing in.
 
 ## API overview
 - `POST /api/upload-url` – generate presigned upload URL to R2.
