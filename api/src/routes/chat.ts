@@ -72,7 +72,7 @@ export async function handleChat(c: AppContext) {
   if (scope === 'team') {
     const chatId = crypto.randomUUID();
     const placeholder =
-      'Team-scope search is coming soon. For now, choose Personal, Org, or All to search indexed content.';
+      'Team-scope search is coming soon. For now, choose Personal, Organization, or All to search indexed content.';
     await recordChat(c.env, {
       id: chatId,
       user_id: user.id,
