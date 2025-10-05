@@ -1,18 +1,35 @@
 import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { fetchSession, getAccessLoginUrl, getAccessLogoutUrl, HttpError } from './lib/api';
-import { FileManager } from './components/FileManager';
-import { ChatPanel } from './components/ChatPanel';
+import { HomeView } from './views/HomeView';
+import { ChatView } from './views/ChatView';
+import { PersonalFilesView } from './views/PersonalFilesView';
+import { DocumentWorkspaceView } from './views/DocumentWorkspaceView';
+import { CommunicationsView } from './views/CommunicationsView';
+import { UserProfileView } from './views/UserProfileView';
+import { FollowingView } from './views/FollowingView';
+import { AnalyticsView } from './views/AnalyticsView';
+import { AboutView } from './views/AboutView';
+import { PlaceholderView } from './views/PlaceholderView';
 
 const queryClient = new QueryClient();
 
-type ActiveView = 'chat' | 'vault' | 'about';
+type ActiveView =
+  | 'home'
+  | 'chat'
+  | 'personal-files'
+  | 'documents'
+  | 'communications'
+  | 'profile'
+  | 'following'
+  | 'analytics'
+  | 'about';
 
 function Dashboard() {
   const { data, isLoading, isError, error } = useQuery({ queryKey: ['session'], queryFn: fetchSession });
   const loginUrl = getAccessLoginUrl(typeof window !== 'undefined' ? window.location.href : undefined);
   const logoutUrl = getAccessLogoutUrl(typeof window !== 'undefined' ? window.location.origin : undefined);
-  const [activeView, setActiveView] = useState<ActiveView>('chat');
+  const [activeView, setActiveView] = useState<ActiveView>('home');
 
   useEffect(() => {
     if (!isError && typeof window !== 'undefined') {
@@ -68,6 +85,52 @@ function Dashboard() {
   }
 
   const user = data?.user;
+  const navItems: Array<{ id: ActiveView; label: string }>
+    = [
+      { id: 'home', label: 'Home' },
+      { id: 'chat', label: 'Chat' },
+      { id: 'personal-files', label: 'Personal Files' },
+      { id: 'documents', label: 'Document Viewer & Search' },
+      { id: 'communications', label: 'Communications' },
+      { id: 'profile', label: 'User Profile' },
+      { id: 'following', label: 'Following' },
+      { id: 'analytics', label: 'Analytics' },
+      { id: 'about', label: 'About Marble' },
+    ];
+
+  const renderView = () => {
+    if (!user) {
+      return (
+        <PlaceholderView
+          title="Loading workspace"
+          description="We couldn't load your session details. Try refreshing the page."
+        />
+      );
+    }
+
+    switch (activeView) {
+      case 'home':
+        return <HomeView currentUserName={user.displayName ?? ''} currentUserEmail={user.email} />;
+      case 'chat':
+        return <ChatView />;
+      case 'personal-files':
+        return <PersonalFilesView currentUserId={user.id} />;
+      case 'documents':
+        return <DocumentWorkspaceView currentUserId={user.id} />;
+      case 'communications':
+        return <CommunicationsView />;
+      case 'profile':
+        return <UserProfileView email={user.email} displayName={user.displayName} />;
+      case 'following':
+        return <FollowingView />;
+      case 'analytics':
+        return <AnalyticsView />;
+      case 'about':
+        return <AboutView />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="app-shell">
@@ -79,114 +142,44 @@ function Dashboard() {
             <p>Your workspace for connected thinking.</p>
           </div>
         </div>
-        {user && (
-          <div className="identity" role="navigation" aria-label="Account">
-            <span className="avatar" aria-hidden="true">
-              {(user.displayName ?? user.email)[0]?.toUpperCase()}
-            </span>
-            <div className="identity__details">
-              <strong>{user.displayName ?? user.email}</strong>
-            </div>
-            <button
-              type="button"
-              className="secondary identity__logout"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  sessionStorage.removeItem('marble-auth-redirected');
-                  window.location.href = logoutUrl;
-                }
-              }}
-            >
-              Logout
-            </button>
+        <div className="identity" role="navigation" aria-label="Account">
+          <span className="avatar" aria-hidden="true">
+            {(user.displayName ?? user.email)[0]?.toUpperCase()}
+          </span>
+          <div className="identity__details">
+            <strong>{user.displayName ?? user.email}</strong>
           </div>
-        )}
+          <button
+            type="button"
+            className="secondary identity__logout"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem('marble-auth-redirected');
+                window.location.href = logoutUrl;
+              }
+            }}
+          >
+            Logout
+          </button>
+        </div>
       </header>
       <main className="app-body">
         <aside className="primary-nav" aria-label="Workspace navigation">
-          <div className="primary-nav__list">
-            <button
-              type="button"
-              className={activeView === 'chat' ? 'active' : ''}
-              onClick={() => setActiveView('chat')}
-            >
-              <span>Ask Marble</span>
-            </button>
-            <button
-              type="button"
-              className={activeView === 'vault' ? 'active' : ''}
-              onClick={() => setActiveView('vault')}
-            >
-              <span>Files &amp; Folders</span>
-            </button>
-            <button
-              type="button"
-              className={activeView === 'about' ? 'active' : ''}
-              onClick={() => setActiveView('about')}
-            >
-              <span>About Marble</span>
-            </button>
-          </div>
+          <nav className="primary-nav__list">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={activeView === item.id ? 'active' : ''}
+                aria-current={activeView === item.id ? 'page' : undefined}
+                onClick={() => setActiveView(item.id)}
+              >
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
         </aside>
-        <section className="app-content">
-          <div
-            className={`app-pane${activeView === 'chat' ? ' is-active' : ''}`}
-            hidden={activeView !== 'chat'}
-            aria-hidden={activeView !== 'chat'}
-          >
-            <ChatPanel />
-          </div>
-          <div
-            className={`app-pane${activeView === 'vault' ? ' is-active' : ''}`}
-            hidden={activeView !== 'vault'}
-            aria-hidden={activeView !== 'vault'}
-          >
-            {user ? <FileManager currentUserId={user.id} /> : null}
-          </div>
-          <div
-            className={`app-pane${activeView === 'about' ? ' is-active' : ''}`}
-            hidden={activeView !== 'about'}
-            aria-hidden={activeView !== 'about'}
-          >
-            <section className="about-panel">
-              <header className="about-panel__header">
-                <h2>Meet Marble</h2>
-                <p>Find, connect, and create from every file.</p>
-              </header>
-              <div className="about-panel__grid">
-                <article>
-                  <h3>What it is</h3>
-                  <p>
-                    Marble is an enterprise multimodal search and generation platform that turns scattered docs,
-                    sheets, decks, recordings, videos, and designs into a connected, living knowledge fabric.
-                  </p>
-                </article>
-                <article>
-                  <h3>What it does</h3>
-                  <p>
-                    It indexes text, audio, video, and images into a shared semantic space so you can search by meaning
-                    across formats and turn results into grounded outputs—summaries, reports, playbooks, and highlight
-                    reels.
-                  </p>
-                </article>
-                <article>
-                  <h3>Why it fits the enterprise</h3>
-                  <p>
-                    Permissions and roles enforced by default, full audit logs, compliance tagging, version history,
-                    and smooth collaboration via shareable searches, annotations, collections, and integrations with
-                    the tools you already use.
-                  </p>
-                </article>
-              </div>
-              <footer className="about-panel__footer">
-                <p className="about-panel__signature">Designed &amp; Built by Harish Adithya.</p>
-                <button type="button" className="secondary" onClick={() => setActiveView('chat')}>
-                  Back to Ask Marble
-                </button>
-              </footer>
-            </section>
-          </div>
-        </section>
+        <section className="app-content">{renderView()}</section>
       </main>
     </div>
   );

@@ -18,6 +18,7 @@ export const ingestInput = z.object({
 export const chatInput = z.object({
   message: z.string().trim().min(1, 'Message is required'),
   knowledgeMode: z.boolean().optional(),
+  scope: z.enum(['personal', 'team', 'org', 'all']).optional(),
 });
 
 const visibilityFilterEnum = z.enum(['public', 'private', 'all']);

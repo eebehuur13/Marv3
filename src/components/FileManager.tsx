@@ -19,11 +19,14 @@ const VAULT_VISIBILITY_STORAGE_KEY = 'marble-vault-visibility';
 
 interface FileManagerProps {
   currentUserId: string;
+  mode?: 'full' | 'personal';
+  storageKey?: string;
 }
 
 interface UploadDialogProps {
   open: boolean;
-  visibility: Visibility;
+  defaultVisibility: Visibility;
+  allowedVisibilities: Visibility[];
   folders: FolderSummary[];
   onClose: () => void;
   onUpload: (args: { file: File; folderId: string; visibility: Visibility; name?: string }) => void;
@@ -33,7 +36,8 @@ interface UploadDialogProps {
 
 function UploadDialog({
   open,
-  visibility,
+  defaultVisibility,
+  allowedVisibilities,
   folders,
   onClose,
   onUpload,
@@ -42,15 +46,15 @@ function UploadDialog({
 }: UploadDialogProps) {
   const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
   const ACCEPTED_EXTENSIONS = ['.txt'];
-  const [selectedVisibility, setSelectedVisibility] = useState<Visibility>(visibility);
+  const [selectedVisibility, setSelectedVisibility] = useState<Visibility>(defaultVisibility);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setSelectedVisibility(visibility);
-  }, [visibility]);
+    setSelectedVisibility((prev) => (allowedVisibilities.includes(prev) ? prev : defaultVisibility));
+  }, [defaultVisibility, allowedVisibilities]);
 
   const scopedFolders = useMemo(
     () => folders.filter((folder) => folder.visibility === selectedVisibility),
@@ -82,27 +86,26 @@ function UploadDialog({
           <h3>Upload File</h3>
         </header>
         <div className="dialog-body">
-          <label className="field">
-            <span>Mode</span>
-            <div className="segmented">
-              <button
-                type="button"
-                className={selectedVisibility === 'private' ? 'active' : ''}
-                onClick={() => setSelectedVisibility('private')}
-                disabled={isUploading}
-              >
-                Private
-              </button>
-              <button
-                type="button"
-                className={selectedVisibility === 'public' ? 'active' : ''}
-                onClick={() => setSelectedVisibility('public')}
-                disabled={isUploading}
-              >
-                Org Shared
-              </button>
-            </div>
-          </label>
+          {allowedVisibilities.length > 1 ? (
+            <label className="field">
+              <span>Space</span>
+              <div className="segmented">
+                {allowedVisibilities.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className={selectedVisibility === option ? 'active' : ''}
+                    onClick={() => setSelectedVisibility(option)}
+                    disabled={isUploading}
+                  >
+                    {option === 'private' ? 'Personal' : 'Org Shared'}
+                  </button>
+                ))}
+              </div>
+            </label>
+          ) : (
+            <input type="hidden" value={selectedVisibility} readOnly />
+          )}
 
           <label className="field">
             <span>Folder</span>
@@ -206,9 +209,10 @@ interface FolderDialogProps {
   onCreate: (args: { name: string; visibility: Visibility }) => void;
   isSaving: boolean;
   defaultVisibility: Visibility;
+  allowedVisibilities: Visibility[];
 }
 
-function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility }: FolderDialogProps) {
+function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility, allowedVisibilities }: FolderDialogProps) {
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState<Visibility>(defaultVisibility);
   const [error, setError] = useState<string | null>(null);
@@ -221,8 +225,8 @@ function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility }: 
     }
     setName('');
     setError(null);
-    setVisibility(defaultVisibility);
-  }, [open, defaultVisibility]);
+    setVisibility(allowedVisibilities.includes(defaultVisibility) ? defaultVisibility : allowedVisibilities[0]);
+  }, [open, defaultVisibility, allowedVisibilities]);
 
   if (!open) return null;
 
@@ -243,27 +247,26 @@ function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility }: 
               disabled={isSaving}
             />
           </label>
-          <label className="field">
-            <span>Visibility</span>
-            <div className="segmented">
-              <button
-                type="button"
-                className={visibility === 'private' ? 'active' : ''}
-                onClick={() => setVisibility('private')}
-                disabled={isSaving}
-              >
-                Private
-              </button>
-              <button
-                type="button"
-                className={visibility === 'public' ? 'active' : ''}
-                onClick={() => setVisibility('public')}
-                disabled={isSaving}
-              >
-                Org Shared
-              </button>
-            </div>
-          </label>
+          {allowedVisibilities.length > 1 ? (
+            <label className="field">
+              <span>Visibility</span>
+              <div className="segmented">
+                {allowedVisibilities.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className={visibility === option ? 'active' : ''}
+                    onClick={() => setVisibility(option)}
+                    disabled={isSaving}
+                  >
+                    {option === 'private' ? 'Personal' : 'Org Shared'}
+                  </button>
+                ))}
+              </div>
+            </label>
+          ) : (
+            <input type="hidden" value={visibility} readOnly />
+          )}
           {error && <p className="error-text">{error}</p>}
         </div>
         <footer className="dialog-footer">
@@ -291,12 +294,17 @@ function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility }: 
 
 type FileSortField = 'name' | 'owner' | 'visibility' | 'updatedAt';
 
-export function FileManager({ currentUserId }: FileManagerProps) {
+export function FileManager({ currentUserId, mode = 'full', storageKey }: FileManagerProps) {
+  const allowedVisibilities: Visibility[] = mode === 'personal' ? ['private'] : ['private', 'public'];
+  const visibilityStorageKey = storageKey ?? VAULT_VISIBILITY_STORAGE_KEY;
   const [visibilityFilter, setVisibilityFilter] = useState<Visibility>(() => {
+    if (allowedVisibilities.length === 1) {
+      return allowedVisibilities[0];
+    }
     if (typeof window === 'undefined') {
       return 'private';
     }
-    const stored = window.sessionStorage.getItem(VAULT_VISIBILITY_STORAGE_KEY);
+    const stored = window.sessionStorage.getItem(visibilityStorageKey);
     return stored === 'public' ? 'public' : 'private';
   });
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -318,11 +326,17 @@ export function FileManager({ currentUserId }: FileManagerProps) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (!allowedVisibilities.includes(visibilityFilter)) {
+      setVisibilityFilter(allowedVisibilities[0]);
+    }
+  }, [allowedVisibilities, visibilityFilter]);
+
+  useEffect(() => {
+    if (allowedVisibilities.length === 1 || typeof window === 'undefined') {
       return;
     }
-    window.sessionStorage.setItem(VAULT_VISIBILITY_STORAGE_KEY, visibilityFilter);
-  }, [visibilityFilter]);
+    window.sessionStorage.setItem(visibilityStorageKey, visibilityFilter);
+  }, [visibilityFilter, allowedVisibilities.length, visibilityStorageKey]);
 
   function canManageFolder(folder: FolderSummary | null): boolean {
     if (!folder) {
@@ -818,8 +832,13 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     ? selectedFolder.owner.displayName ?? selectedFolder.owner.email
     : null;
   const isOrgSpace = visibilityFilter === 'public';
-  const spaceLabel = isOrgSpace ? 'Org Shared' : 'Private';
-  const sidebarTitle = isOrgSpace ? 'Org folders' : 'Private folders';
+  const spaceLabel = isOrgSpace ? 'Org Shared' : 'Personal';
+  const sidebarTitle = isOrgSpace ? 'Org folders' : 'Personal folders';
+  const headerTitle = mode === 'personal' ? 'Personal Files' : 'Document Viewer & Search';
+  const headerSubtitle =
+    mode === 'personal'
+      ? 'Your private Marble workspace—upload drafts and notes that only you can see.'
+      : 'Curate the documents Marble references across your workspace.';
   const selectedFolderFileCountLabel = selectedFolder
     ? `${selectedFolder.fileCount} ${selectedFolder.fileCount === 1 ? 'file' : 'files'}`
     : null;
@@ -832,47 +851,53 @@ export function FileManager({ currentUserId }: FileManagerProps) {
     <section className="files-workspace">
       <header className="files-workspace__hero">
         <div className="files-workspace__hero-summary">
-          <h2>Files &amp; Folders</h2>
-          <p className="files-workspace__hero-subtitle">Curate the documents Marble references across your workspace.</p>
+          <h2>{headerTitle}</h2>
+          <p className="files-workspace__hero-subtitle">{headerSubtitle}</p>
         </div>
-        <div className="files-workspace__hero-controls">
-          <div className="files-workspace__space-toggle" role="tablist" aria-label="Workspace visibility">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={!isOrgSpace}
-              className={!isOrgSpace ? 'is-active' : ''}
-              onClick={() => setVisibilityFilter('private')}
-            >
-              <span className="files-workspace__space-toggle-icon" aria-hidden="true">
-                <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
-                  <path
-                    d="M6.5 8.5V7a3.5 3.5 0 1 1 7 0v1.5h1.75c.41 0 .75.34.75.75v7c0 .41-.34.75-.75.75H4.75A.75.75 0 0 1 4 17.25v-7c0-.41.34-.75.75-.75H6.5Zm1.5 0h4V7a2 2 0 0 0-4 0v1.5Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </span>
-              <span>Private</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={isOrgSpace}
-              className={isOrgSpace ? 'is-active' : ''}
-              onClick={() => setVisibilityFilter('public')}
-            >
-              <span className="files-workspace__space-toggle-icon" aria-hidden="true">
-                <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
-                  <path
-                    d="M6.5 9a2.5 2.5 0 1 1 2.45 2.5H9a4 4 0 0 1 4 4v1a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 16.5v-1a4 4 0 0 1 4-4h.05A2.5 2.5 0 0 1 6.5 9Zm7.75-.5a2 2 0 1 1-1.6 3.2 4.01 4.01 0 0 1 2.35 3.3H17a.5.5 0 0 0 .5-.5v-.65a3.5 3.5 0 0 0-2.76-3.43 2 2 0 0 1-.49-1.37v-.55Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </span>
-              <span>Org Shared</span>
-            </button>
+        {allowedVisibilities.length > 1 && (
+          <div className="files-workspace__hero-controls">
+            <div className="files-workspace__space-toggle" role="tablist" aria-label="Workspace visibility">
+              {allowedVisibilities.includes('private') && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={!isOrgSpace}
+                  className={!isOrgSpace ? 'is-active' : ''}
+                  onClick={() => setVisibilityFilter('private')}
+                >
+                  <span className="files-workspace__space-toggle-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                      <path
+                        d="M6.5 8.5V7a3.5 3.5 0 1 1 7 0v1.5h1.75c.41 0 .75.34.75.75v7c0 .41-.34.75-.75.75H4.75A.75.75 0 0 1 4 17.25v-7c0-.41.34-.75.75-.75H6.5Zm1.5 0h4V7a2 2 0 0 0-4 0v1.5Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </span>
+                  <span>Personal</span>
+                </button>
+              )}
+              {allowedVisibilities.includes('public') && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={isOrgSpace}
+                  className={isOrgSpace ? 'is-active' : ''}
+                  onClick={() => setVisibilityFilter('public')}
+                >
+                  <span className="files-workspace__space-toggle-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                      <path
+                        d="M6.5 9a2.5 2.5 0 1 1 2.45 2.5H9a4 4 0 0 1 4 4v1a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 16.5v-1a4 4 0 0 1 4-4h.05A2.5 2.5 0 0 1 6.5 9Zm7.75-.5a2 2 0 1 1-1.6 3.2 4.01 4.01 0 0 1 2.35 3.3H17a.5.5 0 0 0 .5-.5v-.65a3.5 3.5 0 0 0-2.76-3.43 2 2 0 0 1-.49-1.37v-.55Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </span>
+                  <span>Org Shared</span>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
       {alert && (
@@ -1176,7 +1201,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                     const canManage = isOwner(file);
                     const menuOpen = activeFileMenuId === file.id;
                     const isRenaming = inlineRenameId === file.id;
-                    const visibilityLabel = file.visibility === 'public' ? 'Org Shared' : 'Private';
+                    const visibilityLabel = file.visibility === 'public' ? 'Org Shared' : 'Personal';
                     return (
                       <tr key={file.id} className={selected ? 'is-selected' : undefined}>
                         <td className="files-table__select">
@@ -1291,7 +1316,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
                                         setActiveFileMenuId(null);
                                       }}
                                     >
-                                      Make {file.visibility === 'public' ? 'Private' : 'Org Shared'}
+                                      Make {file.visibility === 'public' ? 'Personal' : 'Org Shared'}
                                     </button>
                                     <button
                                       type="button"
@@ -1319,7 +1344,8 @@ export function FileManager({ currentUserId }: FileManagerProps) {
 
       <UploadDialog
         open={showUpload}
-        visibility={visibilityFilter}
+        defaultVisibility={visibilityFilter}
+        allowedVisibilities={allowedVisibilities}
         folders={manageableFolders}
         defaultFolderId={selectedFolder?.id ?? null}
         onClose={() => setShowUpload(false)}
@@ -1341,6 +1367,7 @@ export function FileManager({ currentUserId }: FileManagerProps) {
         onCreate={({ name, visibility }) => createFolderMutation.mutate({ name, visibility })}
         isSaving={createFolderMutation.isPending}
         defaultVisibility={visibilityFilter}
+        allowedVisibilities={allowedVisibilities}
       />
     </section>
   );

@@ -6,6 +6,7 @@ Marble is a Cloudflare-first playground for storing plain-text docs and experime
 - Upload `.txt` files (≤5&nbsp;MB) via the SPA or the `/api/upload-direct` route; the Worker stores them as-is in R2, tracks metadata in D1, and immediately begins ingestion into Vectorize. Private uploads isolate embeddings under a user-specific namespace derived from the uploader’s Access ID.
 - Trigger ingestion to chunk files (1.5k chars, 200-char overlap), embed with OpenAI, and write vectors into the configured Vectorize index.
 - Ask `/api/chat` questions that cite folder, file, and inclusive line ranges from retrieved chunks.
+- Explore the refreshed sidebar navigation (Home, Chat, Personal Files, Document Viewer & Search, Communications, User Profile, Following, Analytics, About) with staging views ready for upcoming features.
 - Manage folders and documents from the SPA with bulk actions (multi-select delete, private folder removal once empty). Private folders remain visible only to their owner; shared folders are readable org-wide but only the owner can upload, rename, or delete their contents.
 - Inspect end-to-end retrieval with `/api/debug/*` routes (embed, query, file drill-down, vector stats).
 

@@ -45,6 +45,7 @@ export async function handleChat(c: AppContext) {
   }
 
   const knowledgeMode = parsed.data.knowledgeMode ?? false;
+  const scope = parsed.data.scope ?? 'all';
   const lookupMatch = rawMessage.match(/^\/lookup\s*(.*)$/i);
   const shouldLookup = knowledgeMode || Boolean(lookupMatch);
 
@@ -68,6 +69,25 @@ export async function handleChat(c: AppContext) {
     });
   }
 
+  if (scope === 'team') {
+    const chatId = crypto.randomUUID();
+    const placeholder =
+      'Team-scope search is coming soon. For now, choose Personal, Org, or All to search indexed content.';
+    await recordChat(c.env, {
+      id: chatId,
+      user_id: user.id,
+      question: rawMessage,
+      answer: placeholder,
+      citations: JSON.stringify([]),
+    });
+    return c.json({
+      id: chatId,
+      answer: placeholder,
+      citations: [],
+      sources: [],
+    });
+  }
+
   const lookupQuery = lookupMatch ? (lookupMatch[1] ?? '').trim() : rawMessage;
   if (!lookupQuery) {
     throw new HTTPException(400, { message: 'Knowledge mode requires a non-empty question' });
@@ -85,7 +105,13 @@ export async function handleChat(c: AppContext) {
   const topK = parseTopK(c.env.VECTOR_TOP_K);
 
   // 2) Query public + private; if a namespace errors, return []
-  const namespaces = [publicNamespace(), privateNamespace(user.id)];
+  const namespaces: string[] = [];
+  if (scope === 'all' || scope === 'org') {
+    namespaces.push(publicNamespace());
+  }
+  if (scope === 'all' || scope === 'personal') {
+    namespaces.push(privateNamespace(user.id));
+  }
   const results = await Promise.all(
     namespaces.map(async (namespace) => {
       try {
@@ -115,6 +141,7 @@ export async function handleChat(c: AppContext) {
     query: lookupQuery,
     topK,
     matches: topMatches.length,
+    scope,
   });
   if (!chunkIds.length) {
     const chatId = crypto.randomUUID();

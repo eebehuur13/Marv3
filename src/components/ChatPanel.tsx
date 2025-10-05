@@ -1,11 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { sendChat, type ChatResponse } from '../lib/api';
+import { sendChat, type ChatResponse, type ChatScope } from '../lib/api';
 
 type AnswerBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; text: string }
   | { type: 'list'; ordered: boolean; items: string[] };
+
+type KnowledgeScope = ChatScope;
+
+const SCOPE_OPTIONS: Array<{ id: KnowledgeScope; label: string }> = [
+  { id: 'personal', label: 'Personal' },
+  { id: 'team', label: 'Team' },
+  { id: 'org', label: 'Org' },
+  { id: 'all', label: 'All' },
+];
+
+const SCOPE_STORAGE_KEY = 'marble-chat-scope';
+const SCOPE_LABELS: Record<KnowledgeScope, string> = {
+  personal: 'Personal',
+  team: 'Team',
+  org: 'Org',
+  all: 'All spaces',
+};
+
+const SCOPE_DESCRIPTIONS: Record<KnowledgeScope, string> = {
+  personal: 'Queries only your private Marble files.',
+  team: 'Targets shared team spaces (coming soon).',
+  org: 'Searches org-wide knowledge you can access.',
+  all: 'Combines personal, team, and org spaces.',
+};
 
 function structureAnswer(answer: string): AnswerBlock[] {
   const lines = answer.split(/\r?\n/);
@@ -84,6 +108,7 @@ interface ChatMessage {
   prompt: string;
   answer: string;
   knowledgeMode: boolean;
+  scope: KnowledgeScope;
   status: 'pending' | 'ready' | 'error';
   citations: ChatResponse['citations'];
   sources: ChatResponse['sources'];
@@ -97,6 +122,11 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [knowledgeMode, setKnowledgeMode] = useState(false);
+  const [scope, setScope] = useState<KnowledgeScope>(() => {
+    if (typeof window === 'undefined') return 'all';
+    const stored = window.localStorage.getItem(SCOPE_STORAGE_KEY) as KnowledgeScope | null;
+    return stored && SCOPE_OPTIONS.some((option) => option.id === stored) ? stored : 'all';
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
@@ -108,6 +138,11 @@ export function ChatPanel() {
   useEffect(() => {
     localStorage.setItem(KNOWLEDGE_STORAGE_KEY, knowledgeMode ? 'true' : 'false');
   }, [knowledgeMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SCOPE_STORAGE_KEY, scope);
+  }, [scope]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -123,8 +158,18 @@ export function ChatPanel() {
   }, [isFullscreen]);
 
   const mutation = useMutation({
-    mutationFn: async ({ id, question, knowledge }: { id: string; question: string; knowledge: boolean }) => {
-      const response = await sendChat(question, knowledge);
+    mutationFn: async ({
+      id,
+      question,
+      knowledge,
+      scope: scopeOption,
+    }: {
+      id: string;
+      question: string;
+      knowledge: boolean;
+      scope: KnowledgeScope;
+    }) => {
+      const response = await sendChat(question, knowledge, scopeOption);
       return { id, response };
     },
     onSuccess: ({ id, response }) => {
@@ -186,12 +231,13 @@ export function ChatPanel() {
         prompt: question,
         answer: '',
         knowledgeMode,
+        scope,
         status: 'pending',
         citations: [],
         sources: [],
       },
     ]);
-    mutation.mutate({ id, question, knowledge: knowledgeMode });
+    mutation.mutate({ id, question, knowledge: knowledgeMode, scope });
   };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -215,30 +261,47 @@ export function ChatPanel() {
             <p className="chat-panel__subtitle">Toggle between pure model insights and answers grounded in your documents.</p>
           </div>
           <div className="chat-panel__mode">
-          <div className="chat-panel__mode-toggle" role="tablist" aria-label="Response mode">
-            <button
-              type="button"
-              role="tab"
-              className={!knowledgeMode ? 'active' : ''}
-              aria-selected={!knowledgeMode}
-              onClick={() => setKnowledgeMode(false)}
-            >
-              AI only
-            </button>
-            <button
-              type="button"
-              role="tab"
-              className={knowledgeMode ? 'active' : ''}
-              aria-selected={knowledgeMode}
-              onClick={() => setKnowledgeMode(true)}
-            >
-              With My Files
-            </button>
-          </div>
+            <div className="chat-panel__mode-toggle" role="tablist" aria-label="Response mode">
+              <button
+                type="button"
+                role="tab"
+                className={!knowledgeMode ? 'active' : ''}
+                aria-selected={!knowledgeMode}
+                onClick={() => setKnowledgeMode(false)}
+              >
+                AI only
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={knowledgeMode ? 'active' : ''}
+                aria-selected={knowledgeMode}
+                onClick={() => setKnowledgeMode(true)}
+              >
+                With My Files
+              </button>
+            </div>
             <small className="chat-panel__hint-text">
               {knowledgeMode
                 ? 'Answers grounded in your private & shared documents.'
                 : 'Pure model answers.'}
+            </small>
+            <div className="chat-panel__scope-toggle" role="tablist" aria-label="Knowledge scope">
+              {SCOPE_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="tab"
+                  className={scope === option.id ? 'active' : ''}
+                  aria-selected={scope === option.id}
+                  onClick={() => setScope(option.id)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <small className="chat-panel__hint-text chat-panel__hint-text--scope">
+              {SCOPE_DESCRIPTIONS[scope]}
             </small>
           </div>
         </header>
@@ -285,6 +348,7 @@ export function ChatPanel() {
               <header className="chat-bubble__meta">
                 <span className="chat-bubble__role">Marble</span>
                 {message.knowledgeMode && <span className="chat-bubble__badge">With My Files</span>}
+                <span className="chat-bubble__badge chat-bubble__badge--scope">{SCOPE_LABELS[message.scope]}</span>
               </header>
               {message.status === 'error' ? (
                 <p className="chat-bubble__error">{message.error}</p>

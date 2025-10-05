@@ -275,10 +275,12 @@ export function deleteFile(id: string): Promise<{ deleted: boolean }> {
   return fetchJSON(`/api/files/${id}`, { method: 'DELETE' });
 }
 
-export function sendChat(message: string, knowledgeMode: boolean): Promise<ChatResponse> {
+export type ChatScope = 'personal' | 'team' | 'org' | 'all';
+
+export function sendChat(message: string, knowledgeMode: boolean, scope: ChatScope): Promise<ChatResponse> {
   return fetchJSON('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, knowledgeMode }),
+    body: JSON.stringify({ message, knowledgeMode, scope }),
   });
 }
