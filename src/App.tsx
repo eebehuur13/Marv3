@@ -4,13 +4,15 @@ import { fetchSession, getAccessLoginUrl, getAccessLogoutUrl, HttpError } from '
 import { HomeView } from './views/HomeView';
 import { ChatView } from './views/ChatView';
 import { PersonalFilesView } from './views/PersonalFilesView';
-import { DocumentWorkspaceView } from './views/DocumentWorkspaceView';
+import { LibraryView } from './views/LibraryView';
 import { CommunicationsView } from './views/CommunicationsView';
 import { UserProfileView } from './views/UserProfileView';
 import { FollowingView } from './views/FollowingView';
 import { AnalyticsView } from './views/AnalyticsView';
 import { AboutView } from './views/AboutView';
 import { PlaceholderView } from './views/PlaceholderView';
+import { TeamMembersView } from './views/TeamMembersView';
+import { UserDirectoryView } from './views/UserDirectoryView';
 
 const queryClient = new QueryClient();
 
@@ -18,8 +20,10 @@ type ActiveView =
   | 'home'
   | 'chat'
   | 'personal-files'
-  | 'documents'
-  | 'communications'
+  | 'library'
+  | 'inbox'
+  | 'team-members'
+  | 'user-directory'
   | 'profile'
   | 'following'
   | 'analytics'
@@ -89,8 +93,10 @@ function Dashboard() {
     { id: 'home', label: 'Home' },
     { id: 'chat', label: 'Chat' },
     { id: 'personal-files', label: 'Personal Files' },
-    { id: 'documents', label: 'Library' },
-    { id: 'communications', label: 'Inbox' },
+    { id: 'library', label: 'Library' },
+    { id: 'inbox', label: 'Inbox' },
+    { id: 'team-members', label: 'Team Members' },
+    { id: 'user-directory', label: 'User Directory' },
     { id: 'profile', label: 'User Profile' },
     { id: 'following', label: 'Following' },
     { id: 'analytics', label: 'Analytics' },
@@ -114,10 +120,14 @@ function Dashboard() {
         return <ChatView />;
       case 'personal-files':
         return <PersonalFilesView currentUserId={user.id} />;
-      case 'documents':
-        return <DocumentWorkspaceView currentUserId={user.id} />;
-      case 'communications':
+      case 'library':
+        return <LibraryView currentUserId={user.id} />;
+      case 'inbox':
         return <CommunicationsView />;
+      case 'team-members':
+        return <TeamMembersView />;
+      case 'user-directory':
+        return <UserDirectoryView />;
       case 'profile':
         return <UserProfileView email={user.email} displayName={user.displayName} />;
       case 'following':

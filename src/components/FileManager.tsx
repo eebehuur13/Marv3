@@ -295,7 +295,7 @@ function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility, al
 type FileSortField = 'name' | 'owner' | 'visibility' | 'updatedAt';
 
 export function FileManager({ currentUserId, mode = 'full', storageKey }: FileManagerProps) {
-  const allowedVisibilities: Visibility[] = mode === 'personal' ? ['private'] : ['private', 'public'];
+  const allowedVisibilities: Visibility[] = mode === 'personal' ? ['private', 'public'] : ['private', 'public'];
   const visibilityStorageKey = storageKey ?? VAULT_VISIBILITY_STORAGE_KEY;
   const [visibilityFilter, setVisibilityFilter] = useState<Visibility>(() => {
     if (allowedVisibilities.length === 1) {
