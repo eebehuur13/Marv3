@@ -8,7 +8,10 @@ import { handleSession } from './routes/session';
 import { handleUploadUrl } from './routes/upload-url';
 import { handleUploadDirect } from './routes/upload-direct';
 import { handleIngest } from './routes/ingest';
-import { handleCreateFile, handleListFiles } from './routes/files';
+import { handleCreateFile, handleListFiles, handleUpdateFile, handleGetFileSharing, handleUpdateFileSharing } from './routes/files';
+import { handleGetRoster, handleUploadRoster } from './routes/organisation';
+import { handleListTeams, handleCreateTeam, handleInviteMembers, handleAcceptInvite, handleUpdateMemberRole, handleRemoveMember } from './routes/teams';
+import { handleDirectorySearch } from './routes/directory';
 import { handleDeleteFile } from './routes/delete-file';
 import { handleChat } from './routes/chat';
 import { handleDebugEmbed } from './routes/debug-embed';
@@ -80,12 +83,15 @@ api.use('*', async (c, next) => {
       await ensureUser(c.env, user);
     } else {
       // 🚨 fallback dev user (no Access configured)
+      const defaultTenant = c.env.DEFAULT_TENANT ?? 'default';
       const devUser = {
         id: 'dev-user',
         email: 'dev@local',
         displayName: 'Dev User',
         avatarUrl: null,
-        tenant: c.env.DEFAULT_TENANT ?? 'default',
+        tenant: defaultTenant,
+        organizationId: defaultTenant,
+        organizationRole: 'owner',
       };
       c.set('user', devUser);
       await ensureUser(c.env, devUser);
@@ -118,6 +124,7 @@ api.post('/upload-direct', handleUploadDirect);
 api.post('/ingest', handleIngest);
 api.get('/files', handleListFiles);
 api.post('/files', handleCreateFile);
+api.patch('/files/:id', handleUpdateFile);
 api.delete('/files/:id', handleDeleteFile);
 api.post('/chat', handleChat);
 api.get('/debug/embed', handleDebugEmbed);
@@ -125,8 +132,19 @@ api.get('/debug/query', handleDebugQuery);
 api.get('/debug/file', handleDebugFile);
 api.get('/debug/probe-file', handleDebugProbeFile);
 api.get('/debug/stats', handleDebugStats);
+api.get('/organization/roster', handleGetRoster);
+api.post('/organization/roster', handleUploadRoster);
+api.get('/teams', handleListTeams);
+api.post('/teams', handleCreateTeam);
+api.post('/teams/:id/invite', handleInviteMembers);
+api.post('/teams/:id/accept', handleAcceptInvite);
+api.patch('/teams/:id/members/:userId', handleUpdateMemberRole);
+api.delete('/teams/:id/members/:userId', handleRemoveMember);
+api.get('/directory/users', handleDirectorySearch);
 
 registerFolderRoutes(api);
+api.get('/files/:id/sharing', handleGetFileSharing);
+api.patch('/files/:id/sharing', handleUpdateFileSharing);
 
 // Log any unhandled errors and return a JSON message instead of plain 500
 app.onError((err, c) => {

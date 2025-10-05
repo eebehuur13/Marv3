@@ -1,6 +1,7 @@
 import type { AppContext } from '../context';
+import { listActiveTeamIdsForUser } from '../lib/org';
 
-export function handleSession(c: AppContext) {
+export async function handleSession(c: AppContext) {
   const user = c.get('user');
   const next = c.req.query('next');
   if (next) {
@@ -15,6 +16,8 @@ export function handleSession(c: AppContext) {
       console.warn('Invalid next url', next, err);
     }
   }
+  const organisationId = user.organizationId ?? user.tenant ?? c.env.DEFAULT_TENANT ?? 'default';
+  const teams = await listActiveTeamIdsForUser(c.env, user.id);
   c.header('Cache-Control', 'private, no-store');
   return c.json({
     user: {
@@ -22,7 +25,13 @@ export function handleSession(c: AppContext) {
       email: user.email,
       displayName: user.displayName ?? null,
       avatarUrl: user.avatarUrl ?? null,
+      organizationRole: user.organizationRole ?? 'member',
     },
+    organisation: {
+      id: organisationId,
+      role: user.organizationRole ?? 'member',
+    },
+    teams,
     tenant: user.tenant,
   });
 }

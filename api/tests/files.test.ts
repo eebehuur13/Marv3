@@ -8,6 +8,8 @@ vi.mock('../src/lib/access', () => ({
     email: 'user@example.com',
     displayName: 'Test User',
     tenant: 'default',
+    organizationId: 'default',
+    organizationRole: 'owner',
   })),
 }));
 
@@ -20,9 +22,11 @@ describe('files route permissions', () => {
     db.folders.set('public-root', {
       id: 'public-root',
       tenant: 'default',
+      organization_id: 'default',
       name: 'Org Shared',
-      visibility: 'public',
+      visibility: 'organization',
       owner_id: null,
+      team_id: null,
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -31,9 +35,11 @@ describe('files route permissions', () => {
     db.folders.set('shared-not-owned', {
       id: 'shared-not-owned',
       tenant: 'default',
+      organization_id: 'default',
       name: 'Team Handbook',
-      visibility: 'public',
+      visibility: 'organization',
       owner_id: 'owner@example.com',
+      team_id: null,
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -42,7 +48,7 @@ describe('files route permissions', () => {
     const form = new FormData();
     form.append('file', new File(['Hello world'], 'notes.txt', { type: 'text/plain' }));
     form.append('folderId', 'shared-not-owned');
-    form.append('visibility', 'public');
+    form.append('visibility', 'organization');
 
     const request = new Request('https://example.com/api/files', {
       method: 'POST',
@@ -64,9 +70,11 @@ describe('files route permissions', () => {
     db.folders.set('public-root', {
       id: 'public-root',
       tenant: 'default',
+      organization_id: 'default',
       name: 'Org Shared',
-      visibility: 'public',
+      visibility: 'organization',
       owner_id: null,
+      team_id: null,
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -75,9 +83,11 @@ describe('files route permissions', () => {
     db.folders.set('shared-owned', {
       id: 'shared-owned',
       tenant: 'default',
+      organization_id: 'default',
       name: 'My Shared Docs',
-      visibility: 'public',
+      visibility: 'organization',
       owner_id: 'user@example.com',
+      team_id: null,
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -86,7 +96,7 @@ describe('files route permissions', () => {
     const form = new FormData();
     form.append('file', new File(['Hello world'], 'notes.txt', { type: 'text/plain' }));
     form.append('folderId', 'shared-owned');
-    form.append('visibility', 'public');
+    form.append('visibility', 'organization');
 
     const request = new Request('https://example.com/api/files', {
       method: 'POST',

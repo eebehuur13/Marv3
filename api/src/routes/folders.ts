@@ -15,13 +15,26 @@ import {
   type FolderWithOwner,
 } from '../lib/db';
 import { deleteChunkVectors } from '../lib/vectorize';
-import { createFolderInput, listFoldersQuery, updateFolderInput } from '../schemas';
+import {
+  createFolderInput,
+  listFoldersQuery,
+  updateFolderInput,
+} from '../schemas';
+import { listActiveTeamIdsForUser } from '../lib/org';
+
+function resolveOrganisationId(env: AppContext['env'], tenant: string | undefined, organizationId?: string): string {
+  if (organizationId) return organizationId;
+  if (tenant) return tenant;
+  if (env.DEFAULT_TENANT) return env.DEFAULT_TENANT;
+  return 'default';
+}
 
 function serializeFolder(folder: FolderSummaryRow | (FolderWithOwner & { file_count?: number })) {
   return {
     id: folder.id,
     name: folder.name,
     visibility: folder.visibility,
+    teamId: folder.team_id ?? null,
     fileCount: folder.file_count ?? 0,
     owner: folder.owner_email
       ? {
@@ -35,16 +48,25 @@ function serializeFolder(folder: FolderSummaryRow | (FolderWithOwner & { file_co
   };
 }
 
+async function resolveTeamIds(c: AppContext): Promise<string[]> {
+  const user = c.get('user');
+  return listActiveTeamIdsForUser(c.env, user.id);
+}
+
 async function handleList(c: AppContext) {
   const user = c.get('user');
+  const organisationId = resolveOrganisationId(c.env, user.tenant, user.organizationId);
+  const teamIds = await resolveTeamIds(c);
+
   const query = listFoldersQuery.safeParse(c.req.query());
   if (!query.success) {
     throw new HTTPException(400, { message: query.error.message });
   }
 
   const folders = await listFolders(c.env, {
-    tenant: user.tenant,
-    ownerId: user.id,
+    organisationId,
+    userId: user.id,
+    teamIds,
     visibility: query.data.visibility ?? 'all',
   });
 
@@ -56,22 +78,35 @@ async function handleList(c: AppContext) {
 
 async function handleCreate(c: AppContext) {
   const user = c.get('user');
+  const organisationId = resolveOrganisationId(c.env, user.tenant, user.organizationId);
+  const teamIds = await resolveTeamIds(c);
+
   const body = await c.req.json().catch(() => ({}));
   const parsed = createFolderInput.safeParse(body);
   if (!parsed.success) {
     throw new HTTPException(400, { message: parsed.error.message });
   }
 
+  const teamId = parsed.data.visibility === 'team' ? parsed.data.teamId ?? null : null;
+  if (parsed.data.visibility === 'team' && !teamId) {
+    throw new HTTPException(400, { message: 'Team folders require a team id.' });
+  }
+  if (teamId && !teamIds.includes(teamId)) {
+    throw new HTTPException(403, { message: 'You are not a member of the selected team.' });
+  }
+
   const id = crypto.randomUUID();
   await createFolder(c.env, {
     id,
+    organisationId,
     tenant: user.tenant,
     ownerId: user.id,
     name: parsed.data.name,
     visibility: parsed.data.visibility,
+    teamId,
   });
 
-  const detail = await getFolderById(c.env, id, user.tenant);
+  const detail = await getFolderById(c.env, id, organisationId);
   if (!detail) {
     throw new HTTPException(500, { message: 'Failed to create folder' });
   }
@@ -87,6 +122,8 @@ async function handleCreate(c: AppContext) {
 
 async function handleUpdate(c: AppContext) {
   const user = c.get('user');
+  const organisationId = resolveOrganisationId(c.env, user.tenant, user.organizationId);
+  const teamIds = await resolveTeamIds(c);
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => ({}));
   const parsed = updateFolderInput.safeParse(body);
@@ -94,17 +131,27 @@ async function handleUpdate(c: AppContext) {
     throw new HTTPException(400, { message: parsed.error.message });
   }
 
+  const desiredTeamId = parsed.data.visibility === 'team' ? parsed.data.teamId ?? null : parsed.data.teamId ?? null;
+  if (parsed.data.visibility === 'team' && !desiredTeamId) {
+    throw new HTTPException(400, { message: 'Team folders require a team id.' });
+  }
+  if (desiredTeamId && !teamIds.includes(desiredTeamId)) {
+    throw new HTTPException(403, { message: 'You are not a member of the selected team.' });
+  }
+
   const { next } = await updateFolder(c.env, {
     id,
-    tenant: user.tenant,
+    organisationId,
     ownerId: user.id,
     name: parsed.data.name,
     visibility: parsed.data.visibility,
+    teamId: desiredTeamId ?? undefined,
   });
 
   const [summary] = await listFolders(c.env, {
-    tenant: user.tenant,
-    ownerId: user.id,
+    organisationId,
+    userId: user.id,
+    teamIds,
     visibility: 'all',
   }).then((folders) => folders.filter((folder) => folder.id === id));
 
@@ -118,9 +165,11 @@ async function handleUpdate(c: AppContext) {
 
 async function handleDetail(c: AppContext) {
   const user = c.get('user');
+  const organisationId = resolveOrganisationId(c.env, user.tenant, user.organizationId);
+  const teamIds = await resolveTeamIds(c);
   const id = c.req.param('id');
-  const folder = await getFolderById(c.env, id, user.tenant);
-  assertFolderAccess(folder, user.id);
+  const folder = await getFolderById(c.env, id, organisationId);
+  assertFolderAccess(folder, user.id, 'read', teamIds);
 
   c.header('Cache-Control', 'private, no-store');
   return c.json({
@@ -129,6 +178,7 @@ async function handleDetail(c: AppContext) {
           id: folder.id,
           name: folder.name,
           visibility: folder.visibility,
+          teamId: folder.team_id ?? null,
           createdAt: folder.created_at,
           updatedAt: folder.updated_at,
           owner: folder.owner_email
@@ -146,22 +196,25 @@ export function registerFolderRoutes(api: Hono<AppEnv>) {
   api.patch('/folders/:id', handleUpdate);
   api.delete('/folders/:id', async (c) => {
     const user = c.get('user');
+    const organisationId = resolveOrganisationId(c.env, user.tenant, user.organizationId);
+    const teamIds = await resolveTeamIds(c);
     const id = c.req.param('id');
 
-    const folder = await getFolderById(c.env, id, user.tenant);
+    const folder = await getFolderById(c.env, id, organisationId);
     if (!folder || folder.deleted_at) {
       throw new HTTPException(404, { message: 'Folder not found' });
     }
 
-    assertFolderAccess(folder, user.id, 'write');
+    assertFolderAccess(folder, user.id, 'write', teamIds);
 
     if (folder.id === 'public-root' || folder.id === 'private-root') {
       throw new HTTPException(403, { message: 'System folders cannot be removed.' });
     }
 
     const files = await listFiles(c.env, {
-      tenant: user.tenant,
-      ownerId: user.id,
+      organisationId,
+      userId: user.id,
+      teamIds,
       folderId: id,
       visibility: 'all',
     });
@@ -190,7 +243,7 @@ export function registerFolderRoutes(api: Hono<AppEnv>) {
       removedFiles += 1;
     }
 
-    await deleteFolder(c.env, { id, tenant: user.tenant, ownerId: user.id, force: true });
+    await deleteFolder(c.env, { id, organisationId, ownerId: user.id, force: true });
 
     c.header('Cache-Control', 'private, no-store');
     return c.json({ deleted: true, removedFiles });

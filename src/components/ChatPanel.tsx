@@ -26,7 +26,7 @@ const SCOPE_LABELS: Record<KnowledgeScope, string> = {
 
 const SCOPE_DESCRIPTIONS: Record<KnowledgeScope, string> = {
   personal: 'Queries only your private Marble files.',
-  team: 'Targets shared team spaces (coming soon).',
+  team: 'Targets the team space you belong to.',
   org: 'Searches organization-wide knowledge you can access.',
   all: 'Combines personal, team, and organization spaces.',
 };
@@ -173,14 +173,16 @@ export function ChatPanel() {
       return { id, response };
     },
     onSuccess: ({ id, response }) => {
+      const citations = Array.isArray(response.citations) ? response.citations : [];
+      const sources = Array.isArray(response.sources) ? response.sources : [];
       setMessages((prev) =>
         prev.map((message) =>
           message.id === id
             ? {
                 ...message,
-                answer: response.answer,
-                citations: response.citations,
-                sources: response.sources,
+                answer: response.answer ?? '',
+                citations,
+                sources,
                 status: 'ready',
               }
             : message,
@@ -211,7 +213,7 @@ export function ChatPanel() {
     container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
-  const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
+  const hasMessages = messages.length > 0;
 
   const clearChat = () => {
     setMessages([]);

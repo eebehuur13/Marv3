@@ -160,12 +160,15 @@ function toAuthenticatedUser(payload: Record<string, unknown>, env: MarbleBindin
     throw new HTTPException(401, { message: 'Access token missing user claims' });
   }
 
+  const tenant = resolveTenant(payload, env);
   return {
     id,
     email,
     displayName,
     avatarUrl,
-    tenant: resolveTenant(payload, env),
+    tenant,
+    organizationId: tenant,
+    organizationRole: 'member',
   };
 }
 

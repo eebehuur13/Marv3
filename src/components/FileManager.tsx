@@ -98,7 +98,7 @@ function UploadDialog({
                     onClick={() => setSelectedVisibility(option)}
                     disabled={isUploading}
                   >
-                    {option === 'private' ? 'Personal' : 'Organization'}
+                    {option === 'personal' ? 'Personal' : 'Organization'}
                   </button>
                 ))}
               </div>
@@ -259,7 +259,7 @@ function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility, al
                     onClick={() => setVisibility(option)}
                     disabled={isSaving}
                   >
-                    {option === 'private' ? 'Personal' : 'Organization'}
+                    {option === 'personal' ? 'Personal' : 'Organization'}
                   </button>
                 ))}
               </div>
@@ -295,17 +295,17 @@ function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility, al
 type FileSortField = 'name' | 'owner' | 'visibility' | 'updatedAt';
 
 export function FileManager({ currentUserId, mode = 'full', storageKey }: FileManagerProps) {
-  const allowedVisibilities: Visibility[] = mode === 'personal' ? ['private', 'public'] : ['private', 'public'];
+  const allowedVisibilities: Visibility[] = mode === 'personal' ? ['personal', 'organization'] : ['personal', 'organization'];
   const visibilityStorageKey = storageKey ?? VAULT_VISIBILITY_STORAGE_KEY;
   const [visibilityFilter, setVisibilityFilter] = useState<Visibility>(() => {
     if (allowedVisibilities.length === 1) {
       return allowedVisibilities[0];
     }
     if (typeof window === 'undefined') {
-      return 'private';
+      return 'personal';
     }
     const stored = window.sessionStorage.getItem(visibilityStorageKey);
-    return stored === 'public' ? 'public' : 'private';
+    return stored === 'organization' ? 'organization' : 'personal';
   });
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -342,7 +342,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
     if (!folder) {
       return false;
     }
-    if (folder.visibility === 'public') {
+    if (folder.visibility === 'organization') {
       return folder.owner?.id === currentUserId;
     }
     if (!folder.owner?.id) {
@@ -377,19 +377,19 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
   );
 
   const privateFolders = useMemo(
-    () => folders.filter((folder) => folder.visibility === 'private'),
+    () => folders.filter((folder) => folder.visibility === 'personal'),
     [folders],
   );
   const publicFolders = useMemo(
     () =>
       folders
-        .filter((folder) => folder.visibility === 'public')
+        .filter((folder) => folder.visibility === 'organization')
         .filter((folder) => !(folder.id === 'public-root' && folder.fileCount === 0)),
     [folders],
   );
 
   useEffect(() => {
-    const scoped = visibilityFilter === 'private' ? privateFolders : publicFolders;
+    const scoped = visibilityFilter === 'personal' ? privateFolders : publicFolders;
     setSelectedFolderId((prev) => {
       if (prev && scoped.some((folder) => folder.id === prev)) {
         return prev;
@@ -403,7 +403,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
     setIsFolderToolbarMenuOpen(false);
   }, [selectedFolderId]);
 
-  const scopedFolders = visibilityFilter === 'private' ? privateFolders : publicFolders;
+  const scopedFolders = visibilityFilter === 'personal' ? privateFolders : publicFolders;
   const selectedFolder = scopedFolders.find((folder) => folder.id === selectedFolderId) ?? null;
 
   const filesQuery = useQuery({
@@ -413,7 +413,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
         visibility: visibilityFilter,
         folderId: selectedFolderId ?? undefined,
       }),
-    enabled: Boolean(selectedFolderId) || visibilityFilter === 'public',
+    enabled: Boolean(selectedFolderId) || visibilityFilter === 'organization',
   });
 
   const files = filesQuery.data?.files ?? [];
@@ -773,7 +773,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
       setAlert({
         type: 'error',
         message:
-          targetFolder.visibility === 'public'
+          targetFolder.visibility === 'organization'
             ? 'Only the folder owner can upload to this shared folder.'
             : 'You do not have permission to upload to this folder.',
       });
@@ -816,7 +816,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
     }
     if (!canManageFolder(folder)) {
       const reason =
-        folder.visibility === 'public'
+        folder.visibility === 'organization'
           ? 'Shared folders you do not own are view-only.'
           : 'Only the folder owner can manage this space.';
       return { disabled: true, reason, requiresConfirm: false };
@@ -834,7 +834,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
   const selectedFolderOwnerLabel = selectedFolder?.owner
     ? selectedFolder.owner.displayName ?? selectedFolder.owner.email
     : null;
-  const isOrgSpace = visibilityFilter === 'public';
+  const isOrgSpace = visibilityFilter === 'organization';
   const spaceLabel = isOrgSpace ? 'Organization' : 'Personal';
   const sidebarTitle = isOrgSpace ? 'Organization folders' : 'Personal folders';
   const headerTitle = mode === 'personal' ? 'Personal Files' : 'Library';
@@ -860,13 +860,13 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
         {allowedVisibilities.length > 1 && (
           <div className="files-workspace__hero-controls">
             <div className="files-workspace__space-toggle" role="tablist" aria-label="Workspace visibility">
-              {allowedVisibilities.includes('private') && (
+              {allowedVisibilities.includes('personal') && (
                 <button
                   type="button"
                   role="tab"
                   aria-selected={!isOrgSpace}
                   className={!isOrgSpace ? 'is-active' : ''}
-                  onClick={() => setVisibilityFilter('private')}
+                  onClick={() => setVisibilityFilter('personal')}
                 >
                   <span className="files-workspace__space-toggle-icon" aria-hidden="true">
                     <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
@@ -879,13 +879,13 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
                   <span>Personal</span>
                 </button>
               )}
-              {allowedVisibilities.includes('public') && (
+              {allowedVisibilities.includes('organization') && (
                 <button
                   type="button"
                   role="tab"
                   aria-selected={isOrgSpace}
                   className={isOrgSpace ? 'is-active' : ''}
-                  onClick={() => setVisibilityFilter('public')}
+                  onClick={() => setVisibilityFilter('organization')}
                 >
                   <span className="files-workspace__space-toggle-icon" aria-hidden="true">
                     <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
@@ -1204,7 +1204,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
                     const canManage = isOwner(file);
                     const menuOpen = activeFileMenuId === file.id;
                     const isRenaming = inlineRenameId === file.id;
-                    const visibilityLabel = file.visibility === 'public' ? 'Organization' : 'Personal';
+                    const visibilityLabel = file.visibility === 'organization' ? 'Organization' : 'Personal';
                     return (
                       <tr key={file.id} className={selected ? 'is-selected' : undefined}>
                         <td className="files-table__select">
@@ -1314,12 +1314,12 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
                                       onClick={() => {
                                         toggleVisibilityMutation.mutate({
                                           id: file.id,
-                                          visibility: file.visibility === 'public' ? 'private' : 'public',
+                                          visibility: file.visibility === 'organization' ? 'personal' : 'organization',
                                         });
                                         setActiveFileMenuId(null);
                                       }}
                                     >
-                                      {file.visibility === 'public' ? 'Make Personal' : 'Share with Organization'}
+                                      {file.visibility === 'organization' ? 'Make Personal' : 'Share with Organization'}
                                     </button>
                                     <button
                                       type="button"

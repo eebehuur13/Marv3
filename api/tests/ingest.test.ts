@@ -8,6 +8,8 @@ vi.mock('../src/lib/access', () => ({
     email: 'user@example.com',
     displayName: 'Test User',
     tenant: 'default',
+    organizationId: 'default',
+    organizationRole: 'admin',
   })),
 }));
 
@@ -29,9 +31,11 @@ describe('ingest route', () => {
     db.folders.set('private-root', {
       id: 'private-root',
       tenant: 'default',
+      organization_id: 'default',
       name: 'My Space',
-      visibility: 'private',
+      visibility: 'personal',
       owner_id: 'user@example.com',
+      team_id: null,
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -40,9 +44,11 @@ describe('ingest route', () => {
     db.files.set('file-1', {
       id: 'file-1',
       tenant: 'default',
+      organization_id: 'default',
       folder_id: 'private-root',
       owner_id: 'user@example.com',
-      visibility: 'private',
+      team_id: null,
+      visibility: 'personal',
       file_name: 'notes.txt',
       r2_key: 'users/user@example.com/private-root/file-1-notes.txt',
       size: 42,

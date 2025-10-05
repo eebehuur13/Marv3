@@ -1,34 +1,28 @@
-import { useMemo, useState } from 'react';
-
-const MOCK_USERS = [
-  { id: '1', name: 'Harish Adithya', email: 'harish@example.com', username: 'harish', team: 'Knowledge Ops' },
-  { id: '2', name: 'Ravi Kumar', email: 'ravi@example.com', username: 'ravi', team: 'Knowledge Ops' },
-  { id: '3', name: 'Jaya Rao', email: 'jaya@example.com', username: 'jaya', team: 'Product Marketing' },
-  { id: '4', name: 'Irene Chen', email: 'irene@example.com', username: 'ichen', team: 'Design' },
-];
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { searchDirectoryUsers, type DirectoryEntry } from '../lib/api';
 
 export function UserDirectoryView() {
   const [query, setQuery] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
+  const normalizedQuery = query.trim();
 
-  const teamOptions = useMemo(() => {
-    const unique = new Set<string>();
-    MOCK_USERS.forEach((user) => unique.add(user.team));
-    return Array.from(unique).sort();
-  }, []);
+  const directoryQuery = useQuery({
+    queryKey: ['directory', normalizedQuery],
+    queryFn: () => searchDirectoryUsers(normalizedQuery),
+  });
 
-  const results = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return MOCK_USERS.filter((user) => {
-      if (teamFilter !== 'all' && user.team !== teamFilter) return false;
-      if (!normalized) return true;
-      return (
-        user.name.toLowerCase().includes(normalized) ||
-        user.email.toLowerCase().includes(normalized) ||
-        user.username.toLowerCase().includes(normalized)
-      );
-    });
-  }, [query, teamFilter]);
+  const results = directoryQuery.data?.results ?? [];
+
+  const teamOptions = useMemo(() => buildTeamOptions(results), [results]);
+
+  useEffect(() => {
+    if (teamFilter !== 'all' && !teamOptions.includes(teamFilter)) {
+      setTeamFilter('all');
+    }
+  }, [teamFilter, teamOptions]);
+
+  const filteredResults = useMemo(() => applyTeamFilter(results, teamFilter), [results, teamFilter]);
 
   return (
     <section className="user-directory-view panel-surface">
@@ -56,19 +50,21 @@ export function UserDirectoryView() {
       </header>
 
       <div className="user-directory-view__results">
-        {results.length === 0 ? (
+        {directoryQuery.isLoading ? (
+          <p className="muted">Loading directory…</p>
+        ) : filteredResults.length === 0 ? (
           <p className="muted">No users match that search just yet.</p>
         ) : (
           <ul className="user-directory-list">
-            {results.map((user) => (
+            {filteredResults.map((user) => (
               <li key={user.id}>
                 <div className="user-directory-list__main">
-                  <strong>{user.name}</strong>
+                  <strong>{user.display_name ?? user.email}</strong>
                   <span>{user.email}</span>
                 </div>
                 <div className="user-directory-list__meta">
-                  <span>@{user.username}</span>
-                  <span>{user.team}</span>
+                  <span>@{user.username ?? '—'}</span>
+                  <span>{user.teams.length ? user.teams.join(', ') : 'No teams yet'}</span>
                 </div>
                 <div className="user-directory-list__actions">
                   <button type="button" className="secondary" disabled>
@@ -85,4 +81,19 @@ export function UserDirectoryView() {
       </div>
     </section>
   );
+}
+
+function buildTeamOptions(entries: DirectoryEntry[]): string[] {
+  const unique = new Set<string>();
+  for (const entry of entries) {
+    for (const team of entry.teams) {
+      unique.add(team);
+    }
+  }
+  return Array.from(unique).sort((a, b) => a.localeCompare(b));
+}
+
+function applyTeamFilter(entries: DirectoryEntry[], selectedTeam: string): DirectoryEntry[] {
+  if (selectedTeam === 'all') return entries;
+  return entries.filter((entry) => entry.teams.includes(selectedTeam));
 }

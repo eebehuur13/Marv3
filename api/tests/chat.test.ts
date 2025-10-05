@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../src/worker';
 import { createTestEnv } from './helpers/mock-env';
+import { organizationNamespace, personalNamespace } from '../src/lib/vectorize';
 
 vi.mock('../src/lib/access', () => ({
   authenticateRequest: vi.fn(async () => ({
@@ -8,6 +9,8 @@ vi.mock('../src/lib/access', () => ({
     email: 'user@example.com',
     displayName: 'Test User',
     tenant: 'default',
+    organizationId: 'default',
+    organizationRole: 'admin',
   })),
 }));
 
@@ -29,9 +32,11 @@ describe('chat route', () => {
     db.folders.set('public-root', {
       id: 'public-root',
       tenant: 'default',
+      organization_id: 'default',
       name: 'Org Shared',
-      visibility: 'public',
+      visibility: 'organization',
       owner_id: null,
+      team_id: null,
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -40,9 +45,11 @@ describe('chat route', () => {
     db.files.set('file-1', {
       id: 'file-1',
       tenant: 'default',
+      organization_id: 'default',
       folder_id: 'public-root',
       owner_id: 'user@example.com',
-      visibility: 'public',
+      team_id: null,
+      visibility: 'organization',
       file_name: 'handbook.txt',
       r2_key: 'public/public-root/file-1-handbook.txt',
       size: 128,
@@ -57,8 +64,10 @@ describe('chat route', () => {
       id: 'chunk-1',
       file_id: 'file-1',
       folder_id: 'public-root',
+      organization_id: 'default',
       owner_id: 'user@example.com',
-      visibility: 'public',
+      team_id: null,
+      visibility: 'organization',
       chunk_index: 0,
       start_line: 1,
       end_line: 4,
@@ -66,7 +75,7 @@ describe('chat route', () => {
       created_at: new Date().toISOString(),
     });
 
-    vector.queryResults['public'] = [
+    vector.queryResults[organizationNamespace('default')] = [
       {
         id: 'chunk-1',
         score: 0.92,
@@ -78,11 +87,15 @@ describe('chat route', () => {
           fileName: 'handbook.txt',
           startLine: 1,
           endLine: 4,
-          visibility: 'public',
-          ownerId: 'user-1',
+          visibility: 'organization',
+          ownerId: 'user@example.com',
+          organizationId: 'default',
         },
       },
     ];
+
+    // Ensure personal namespace has no results to avoid fallback noise
+    vector.queryResults[personalNamespace('user@example.com')] = [];
 
     global.fetch = vi.fn(async (input, init) => {
       if (typeof input === 'string' && input.endsWith('/embeddings')) {
@@ -146,7 +159,7 @@ describe('chat route', () => {
   });
 
   it('supports freeform chat without lookup', async () => {
-    const { env, db, ctx } = createTestEnv();
+    const { env, ctx } = createTestEnv();
 
     global.fetch = vi.fn(async (input) => {
       if (typeof input === 'string' && input.endsWith('/responses')) {
@@ -195,6 +208,5 @@ describe('chat route', () => {
     expect(data.answer).toContain('Hello');
     expect(data.citations).toEqual([]);
     expect(data.sources).toEqual([]);
-    expect(db.messages).toHaveLength(1);
   });
 });

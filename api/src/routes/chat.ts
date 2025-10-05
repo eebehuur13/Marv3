@@ -3,23 +3,26 @@ import type { AppContext } from '../context';
 import { createEmbeddings, generateGeneralAnswer, generateStructuredAnswer } from '../lib/openai';
 import { chatInput } from '../schemas';
 import { getChunksByIds, recordChat } from '../lib/db';
-import { privateNamespace, publicNamespace, queryNamespace, type VectorMatch } from '../lib/vectorize';
+import {
+  organizationNamespace,
+  personalNamespace,
+  queryNamespace,
+  teamNamespace,
+  type VectorMatch,
+} from '../lib/vectorize';
+import { listActiveTeamIdsForUser } from '../lib/org';
 
 // Normalize embedding provider output to number[]
 function normalizeQuestionEmbedding(maybe: any): number[] {
-  // OpenAI embeddings: { data: [{ embedding: number[] }] }
   if (maybe && Array.isArray(maybe.data) && maybe.data[0]?.embedding) {
     return maybe.data[0].embedding as number[];
   }
-  // number[][] (e.g. direct return from createEmbeddings)
   if (Array.isArray(maybe) && Array.isArray(maybe[0])) {
     return maybe[0] as number[];
   }
-  // Already number[]
   if (Array.isArray(maybe) && typeof maybe[0] === 'number') {
     return maybe as number[];
   }
-  // Some wrappers: { vectors: number[][] }
   if (maybe && Array.isArray(maybe.vectors) && Array.isArray(maybe.vectors[0])) {
     return maybe.vectors[0] as number[];
   }
@@ -33,6 +36,9 @@ function parseTopK(value: string | undefined): number {
 
 export async function handleChat(c: AppContext) {
   const user = c.get('user');
+  const organisationId = user.organizationId ?? user.tenant ?? c.env.DEFAULT_TENANT ?? 'default';
+  const teamIds = await listActiveTeamIdsForUser(c.env, user.id);
+
   const requestBody = await c.req.json();
   const parsed = chatInput.safeParse(requestBody);
   if (!parsed.success) {
@@ -69,25 +75,6 @@ export async function handleChat(c: AppContext) {
     });
   }
 
-  if (scope === 'team') {
-    const chatId = crypto.randomUUID();
-    const placeholder =
-      'Team-scope search is coming soon. For now, choose Personal, Organization, or All to search indexed content.';
-    await recordChat(c.env, {
-      id: chatId,
-      user_id: user.id,
-      question: rawMessage,
-      answer: placeholder,
-      citations: JSON.stringify([]),
-    });
-    return c.json({
-      id: chatId,
-      answer: placeholder,
-      citations: [],
-      sources: [],
-    });
-  }
-
   const lookupQuery = lookupMatch ? (lookupMatch[1] ?? '').trim() : rawMessage;
   if (!lookupQuery) {
     throw new HTTPException(400, { message: 'Knowledge mode requires a non-empty question' });
@@ -104,14 +91,30 @@ export async function handleChat(c: AppContext) {
 
   const topK = parseTopK(c.env.VECTOR_TOP_K);
 
-  // 2) Query public + private; if a namespace errors, return []
   const namespaces: string[] = [];
   if (scope === 'all' || scope === 'org') {
-    namespaces.push(publicNamespace());
+    namespaces.push(organizationNamespace(organisationId));
   }
   if (scope === 'all' || scope === 'personal') {
-    namespaces.push(privateNamespace(user.id));
+    namespaces.push(personalNamespace(user.id));
   }
+  if ((scope === 'all' || scope === 'team') && teamIds.length) {
+    namespaces.push(...teamIds.map((teamId) => teamNamespace(teamId)));
+  }
+
+  if (scope === 'team' && !teamIds.length) {
+    const chatId = crypto.randomUUID();
+    const placeholder = 'Join a team to search team-specific knowledge. You are not a member of any teams yet.';
+    await recordChat(c.env, {
+      id: chatId,
+      user_id: user.id,
+      question: rawMessage,
+      answer: placeholder,
+      citations: JSON.stringify([]),
+    });
+    return c.json({ id: chatId, answer: placeholder, citations: [], sources: [] });
+  }
+
   const results = await Promise.all(
     namespaces.map(async (namespace) => {
       try {
@@ -197,18 +200,10 @@ export async function handleChat(c: AppContext) {
     first: contexts[0]?.chunkId,
   });
 
-  // 5) Ask your LLM to synthesize
-  const structured = await generateStructuredAnswer(
-    c.env,
-    rawMessage,
-    contexts.map((cxt) => ({
-      folderName: cxt.folderName,
-      fileName: cxt.fileName,
-      startLine: cxt.startLine,
-      endLine: cxt.endLine,
-      content: cxt.content,
-    })),
-  );
+  const structured = await generateStructuredAnswer(c.env, {
+    question: lookupQuery,
+    contexts,
+  });
 
   const chatId = crypto.randomUUID();
   await recordChat(c.env, {
@@ -216,13 +211,13 @@ export async function handleChat(c: AppContext) {
     user_id: user.id,
     question: rawMessage,
     answer: structured.answer,
-    citations: JSON.stringify(structured.citations),
+    citations: JSON.stringify(structured.citations ?? []),
   });
 
   return c.json({
     id: chatId,
     answer: structured.answer,
-    citations: structured.citations,
+    citations: structured.citations ?? [],
     sources: contexts,
   });
 }

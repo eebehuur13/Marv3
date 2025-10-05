@@ -92,7 +92,12 @@ export async function ingestFileById(env: MarbleBindings, fileId: string, acting
   const existing = await deleteChunksForFile(env, file.id);
   if (existing.length) {
     try {
-      await deleteChunkVectors(env, existing, file.visibility, file.owner_id);
+      await deleteChunkVectors(env, existing, {
+        visibility: file.visibility,
+        ownerId: file.owner_id,
+        organizationId: file.organization_id,
+        teamId: file.team_id ?? null,
+      });
     } catch (error) {
       console.error('Vector delete failed', { fileId: file.id, error });
       throw error;
@@ -108,7 +113,9 @@ export async function ingestFileById(env: MarbleBindings, fileId: string, acting
       id: chunkId,
       file_id: file.id,
       folder_id: file.folder_id,
+      organization_id: file.organization_id,
       owner_id: file.owner_id,
+      team_id: file.team_id ?? null,
       visibility: file.visibility,
       chunk_index: index,
       start_line: chunk.startLine,
@@ -127,6 +134,8 @@ export async function ingestFileById(env: MarbleBindings, fileId: string, acting
         endLine: chunk.endLine,
         visibility: file.visibility,
         ownerId: file.owner_id,
+        organizationId: file.organization_id,
+        teamId: file.team_id ?? null,
       });
     } catch (error) {
       console.error('Vector upsert failed for chunk', chunkId, error);

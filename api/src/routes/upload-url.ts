@@ -9,13 +9,24 @@ import {
 } from '../lib/db';
 import { assertTxtFile, deriveTxtFileName } from '../lib/text-conversion';
 import { buildObjectKey } from '../lib/storage';
+import { listActiveTeamIdsForUser } from '../lib/org';
+import type { Visibility } from '../types';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+function normalizeVisibility(value: Visibility): Visibility {
+  if (value === 'organization' || value === 'team' || value === 'personal') {
+    return value;
+  }
+  return 'personal';
+}
 
 export async function handleUploadUrl(c: AppContext) {
   try {
     const env = c.env;
     const user = c.get('user');
+    const organisationId = user.organizationId ?? user.tenant ?? env.DEFAULT_TENANT ?? 'default';
+    const teamIds = await listActiveTeamIdsForUser(env, user.id);
 
     const body = await c.req.json().catch(() => ({} as any));
     const parsed = uploadUrlInput.safeParse(body);
@@ -23,7 +34,9 @@ export async function handleUploadUrl(c: AppContext) {
       throw new HTTPException(400, { message: parsed.error.message });
     }
 
-    const { folderId, folderName, visibility, fileName, size, mimeType } = parsed.data;
+    const visibility = normalizeVisibility(parsed.data.visibility);
+    const { folderId, folderName, fileName, size, mimeType } = parsed.data;
+    const teamId = visibility === 'team' ? body.teamId ?? null : null;
 
     if (size > MAX_UPLOAD_BYTES) {
       throw new HTTPException(400, { message: 'File exceeds the 5 MB upload limit.' });
@@ -33,42 +46,58 @@ export async function handleUploadUrl(c: AppContext) {
 
     const normalizedName = deriveTxtFileName(fileName);
 
-    let folder = await getFolder(env, folderId, user.tenant);
+    let folder = await getFolder(env, folderId, organisationId);
     if (!folder) {
       const ownerForFolder = folderId === 'public-root' ? null : user.id;
       await ensureFolder(
         env,
         {
           id: folderId,
+          organisationId,
           tenant: user.tenant,
           name: folderName,
           visibility,
           ownerId: ownerForFolder,
+          teamId,
         },
       );
-      folder = await getFolder(env, folderId, user.tenant);
+      folder = await getFolder(env, folderId, organisationId);
     }
     if (!folder) {
       throw new HTTPException(500, { message: 'Unable to resolve folder' });
     }
 
-    assertFolderVisibility(folder, user.id, 'write');
+    if (visibility === 'team') {
+      const folderTeamId = folder.team_id ?? teamId;
+      if (!folderTeamId) {
+        throw new HTTPException(400, { message: 'Team uploads require a team id.' });
+      }
+      if (!teamIds.includes(folderTeamId)) {
+        throw new HTTPException(403, { message: 'You are not a member of the selected team.' });
+      }
+    }
+
+    assertFolderVisibility(folder, user.id, 'write', teamIds);
 
     const fileId = crypto.randomUUID();
     const key = buildObjectKey({
       visibility,
+      organizationId: organisationId,
       ownerId: user.id,
       folderId,
+      teamId: folder.team_id ?? teamId ?? null,
       fileId,
       fileName: normalizedName,
     });
 
     await createFileRecord(env, {
       id: fileId,
+      organisationId,
       tenant: user.tenant,
       folderId,
       ownerId: user.id,
       visibility,
+      teamId: folder.team_id ?? teamId ?? null,
       fileName: normalizedName,
       r2Key: key,
       size,
@@ -76,14 +105,11 @@ export async function handleUploadUrl(c: AppContext) {
       mimeType: 'text/plain',
     });
 
-    // ---- Try presign (several variants). If all fail, return the exact reason. ----
     const contentType = 'text/plain';
     let urlStr: string | null = null;
     const reasons: string[] = [];
 
-    // Variant A: expiration + httpMetadata.contentType
     try {
-      // @ts-ignore runtime differences
       const res = await env.MARBLE_FILES.createPresignedUrl({
         method: 'PUT',
         key,
@@ -93,15 +119,12 @@ export async function handleUploadUrl(c: AppContext) {
       const u = (res as any)?.url;
       if (u) urlStr = typeof u === 'string' ? u : u.toString();
     } catch (e: any) {
-      const msg = e?.message || String(e);
-      reasons.push(`A(expiration+httpMetadata): ${msg}`);
-      console.error('Presign A failed:', msg);
+      reasons.push(`A(expiration+httpMetadata): ${e?.message || e}`);
+      console.error('Presign A failed:', e);
     }
 
-    // Variant B: expires + customHeaders["content-type"]
     if (!urlStr) {
       try {
-        // @ts-ignore runtime differences
         const res = await env.MARBLE_FILES.createPresignedUrl({
           method: 'PUT',
           key,
@@ -111,16 +134,13 @@ export async function handleUploadUrl(c: AppContext) {
         const u = (res as any)?.url;
         if (u) urlStr = typeof u === 'string' ? u : u.toString();
       } catch (e: any) {
-        const msg = e?.message || String(e);
-        reasons.push(`B(expires+customHeaders): ${msg}`);
-        console.error('Presign B failed:', msg);
+        reasons.push(`B(expires+customHeaders): ${e?.message || e}`);
+        console.error('Presign B failed:', e);
       }
     }
 
-    // Variant C: minimal (no header constraints)
     if (!urlStr) {
       try {
-        // @ts-ignore runtime differences
         const res = await env.MARBLE_FILES.createPresignedUrl({
           method: 'PUT',
           key,
@@ -129,14 +149,12 @@ export async function handleUploadUrl(c: AppContext) {
         const u = (res as any)?.url;
         if (u) urlStr = typeof u === 'string' ? u : u.toString();
       } catch (e: any) {
-        const msg = e?.message || String(e);
-        reasons.push(`C(minimal): ${msg}`);
-        console.error('Presign C failed:', msg);
+        reasons.push(`C(minimal): ${e?.message || e}`);
+        console.error('Presign C failed:', e);
       }
     }
 
     if (!urlStr) {
-      // Return the detailed reasons so you can see the *real* R2 error in curl/UI
       return c.json({
         error: `Failed to create upload URL for key ${key}`,
         reasons,
@@ -153,10 +171,8 @@ export async function handleUploadUrl(c: AppContext) {
       err instanceof HTTPException
         ? err.message
         : (err as any)?.message || String(err);
-    if (!(err instanceof HTTPException)) {
-      console.error('upload-url error:', err);
-    }
     if (err instanceof HTTPException) throw err;
+    console.error('upload-url error:', err);
     throw new HTTPException(500, { message: msg });
   }
 }

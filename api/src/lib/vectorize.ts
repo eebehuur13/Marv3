@@ -11,25 +11,27 @@ export interface VectorMetadata {
   endLine: number;
   visibility: Visibility;
   ownerId: string;
+  organizationId: string;
+  teamId?: string | null;
 }
 
 export interface VectorMatch extends VectorMetadata {
   score: number;
 }
 
-function encodeOwnerId(ownerId: string): string {
+function encodeIdentifier(value: string): string {
   let base64: string;
   if (typeof btoa === 'function') {
-    base64 = btoa(ownerId);
+    base64 = btoa(value);
   } else if (typeof Buffer !== 'undefined') {
-    base64 = Buffer.from(ownerId, 'utf8').toString('base64');
+    base64 = Buffer.from(value, 'utf8').toString('base64');
   } else {
     throw new Error('Base64 encoding not supported in this environment');
   }
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-function decodeOwnerId(token: string): string {
+function decodeIdentifier(token: string): string {
   if (!token) return '';
   const padded = token.padEnd(token.length + ((4 - (token.length % 4)) % 4), '=');
   const base64 = padded.replace(/-/g, '+').replace(/_/g, '/');
@@ -46,8 +48,17 @@ function decodeOwnerId(token: string): string {
   return '';
 }
 
-function partitionForVisibility(visibility: Visibility, ownerId: string): string {
-  return visibility === 'public' ? 'public' : `user:${encodeOwnerId(ownerId)}`;
+function partitionForVisibility(metadata: VectorMetadata): string {
+  if (metadata.visibility === 'organization') {
+    return organizationNamespace(metadata.organizationId);
+  }
+  if (metadata.visibility === 'team') {
+    if (!metadata.teamId) {
+      return 'team:unknown';
+    }
+    return teamNamespace(metadata.teamId);
+  }
+  return personalNamespace(metadata.ownerId);
 }
 
 /** Detect V2 binding: remove()/describe() present or upsert/query single-arg form */
@@ -77,7 +88,7 @@ export async function upsertChunkVector(
   if (isV2(binding)) {
     await binding.upsert(vectors); // V2: single-arg
   } else {
-    const namespace = partitionForVisibility(metadata.visibility, metadata.ownerId);
+    const namespace = partitionForVisibility(metadata);
     await binding.upsert(namespace, vectors); // V1: namespaced
   }
 }
@@ -88,14 +99,12 @@ export async function upsertChunkVector(
 export async function deleteChunkVectors(
   env: MarbleBindings,
   chunkIds: string[],
-  visibility: Visibility,
-  ownerId: string,
+  metadata: { visibility: Visibility; ownerId: string; organizationId: string; teamId?: string | null },
 ): Promise<void> {
   if (!chunkIds.length) return;
   const binding: any = env.MARBLE_VECTORS;
 
   if (isV2(binding)) {
-    // ✅ V2: only use remove()
     if (typeof binding.remove === 'function') {
       await binding.remove(chunkIds);
     } else if (typeof binding.deleteByIds === 'function') {
@@ -104,8 +113,19 @@ export async function deleteChunkVectors(
       throw new Error('Vectorize binding does not support delete/remove');
     }
   } else {
-    // ✅ V1: namespaced delete
-    const namespace = partitionForVisibility(visibility, ownerId);
+    const namespace = partitionForVisibility({
+      chunkId: '',
+      fileId: '',
+      folderId: '',
+      folderName: '',
+      fileName: '',
+      startLine: 0,
+      endLine: 0,
+      visibility: metadata.visibility,
+      ownerId: metadata.ownerId,
+      organizationId: metadata.organizationId,
+      teamId: metadata.teamId ?? null,
+    });
     await binding.delete(namespace, chunkIds);
   }
 }
@@ -120,11 +140,14 @@ interface QueryOptions {
 }
 
 function filterFromNamespace(ns: string): Record<string, unknown> {
-  if (ns === 'public') return { visibility: 'public' };
+  if (ns.startsWith('org:')) {
+    return { visibility: 'organization', organizationId: decodeIdentifier(ns.slice(4)) };
+  }
+  if (ns.startsWith('team:')) {
+    return { visibility: 'team', teamId: decodeIdentifier(ns.slice(5)) };
+  }
   if (ns.startsWith('user:')) {
-    const encoded = ns.slice('user:'.length);
-    const ownerId = decodeOwnerId(encoded);
-    return { visibility: 'private', ownerId };
+    return { visibility: 'personal', ownerId: decodeIdentifier(ns.slice(5)) };
   }
   return {};
 }
@@ -139,12 +162,11 @@ export async function queryNamespace(env: MarbleBindings, options: QueryOptions)
       console.warn('Vector match missing chunkId', { namespace: options.namespace, raw });
       return null;
     }
-    const visibility: Visibility = metadata?.visibility ?? (options.namespace === 'public' ? 'public' : 'private');
-    const ownerId =
-      metadata?.ownerId ??
-      (visibility === 'private' && options.namespace.startsWith('user:')
-        ? decodeOwnerId(options.namespace.slice('user:'.length))
-        : '');
+    const namespaceFilter = filterFromNamespace(options.namespace);
+    const visibility: Visibility = metadata?.visibility ?? (namespaceFilter.visibility as Visibility ?? 'personal');
+    const ownerId = metadata?.ownerId ?? (visibility === 'personal' ? namespaceFilter.ownerId : '');
+    const organizationId = metadata?.organizationId ?? (visibility === 'organization' ? namespaceFilter.organizationId : '');
+    const teamId = metadata?.teamId ?? (visibility === 'team' ? namespaceFilter.teamId : null);
 
     return {
       chunkId,
@@ -156,24 +178,27 @@ export async function queryNamespace(env: MarbleBindings, options: QueryOptions)
       endLine: metadata?.endLine ?? 0,
       visibility,
       ownerId,
+      organizationId,
+      teamId,
       score: raw.score ?? 0,
     };
   };
 
   if (isV2(binding)) {
     const filter = filterFromNamespace(options.namespace);
-    const baseOptions = {
+    const baseOptions: any = {
       topK: options.topK,
       returnValues: false,
       returnMetadata: true,
-      filter,
     };
+    if (Object.keys(filter).length) {
+      baseOptions.filter = filter;
+    }
 
     let response = await binding.query(options.vector, baseOptions);
     let matches = (response?.matches ?? []).map(buildMatch).filter(Boolean) as VectorMatch[];
 
     if (!matches.length && filter && Object.keys(filter).length) {
-      // Fallback: retry without metadata filter in case vectors were stored without it
       response = await binding.query(options.vector, {
         topK: options.topK,
         returnValues: false,
@@ -185,7 +210,6 @@ export async function queryNamespace(env: MarbleBindings, options: QueryOptions)
     return matches;
   }
 
-  // V1 fallback
   const rV1 = await binding.query(options.namespace, {
     vector: options.vector,
     topK: options.topK,
@@ -196,9 +220,14 @@ export async function queryNamespace(env: MarbleBindings, options: QueryOptions)
 }
 
 /* Helpers */
-export function publicNamespace(): string {
-  return 'public';
+export function organizationNamespace(organisationId: string): string {
+  return `org:${encodeIdentifier(organisationId)}`;
 }
-export function privateNamespace(ownerId: string): string {
-  return `user:${encodeOwnerId(ownerId)}`;
+
+export function personalNamespace(userId: string): string {
+  return `user:${encodeIdentifier(userId)}`;
+}
+
+export function teamNamespace(teamId: string): string {
+  return `team:${encodeIdentifier(teamId)}`;
 }

@@ -7,7 +7,10 @@ Marble is a Cloudflare-first playground for storing plain-text docs and experime
 - Trigger ingestion to chunk files (1.5k chars, 200-char overlap), embed with OpenAI, and write vectors into the configured Vectorize index.
 - Ask `/api/chat` questions that cite folder, file, and inclusive line ranges from retrieved chunks.
 - Explore the refreshed sidebar navigation (Home, Chat, Personal Files, Library, Inbox, Team Members, User Directory, User Profile, Following, Analytics, About) with staging views ready for upcoming features.
-- Manage folders and documents from the SPA with bulk actions (multi-select delete, private folder removal once empty). Private folders remain visible only to their owner; shared folders are readable org-wide but only the owner can upload, rename, or delete their contents.
+- Manage folders and documents from the SPA with bulk actions (multi-select delete, personal folder removal once empty). Visibility now supports three scopes: `personal` (only you), `team` (members of a given Marble team), and `organization` (everyone in the tenant). Owners keep write access while org/team members get read-only access unless explicitly granted.
+- Seed or upload an organization roster (`.txt`, one record per line) to provision accounts and mark admins/owners, then invite rostered users into teams from the Team Members view.
+- List, create, and manage teams directly from the SPA—adjust roles, revoke access, and monitor pending invites backed by the new D1 tables.
+- Search the user directory (name, email, username) using the Access-provisioned roster and Cloudflare Access metadata so you can quickly share files or add teammates to a team.
 - Inspect end-to-end retrieval with `/api/debug/*` routes (embed, query, file drill-down, vector stats).
 
 ## Requirements
@@ -100,6 +103,13 @@ Keep the Access login page consistent with the in-app Marble styling:
 - `POST /api/ingest` – chunk + embed any ready files.
 - `POST /api/chat` – run retrieval-augmented chat.
 - `GET /api/files` / `DELETE /api/files/:id` – list and delete files for the current user scope.
+- `PATCH /api/files/:id` – rename files or move them between personal/team/organization scopes.
+- `GET /api/files/:id/sharing` / `PATCH /api/files/:id/sharing` – inspect and update explicit share permissions.
+- `GET /api/organization/roster` / `POST /api/organization/roster` – inspect or replace the org roster (admins/owners only for uploads).
+- `GET /api/teams` / `POST /api/teams` – list and create teams.
+- `POST /api/teams/:id/invite` / `POST /api/teams/:id/accept` – invite rostered users to teams or accept pending invites.
+- `PATCH /api/teams/:id/members/:userId` / `DELETE /api/teams/:id/members/:userId` – change a member’s role or remove them.
+- `GET /api/directory/users` – search the organization directory (name/email/username) with roster-backed data.
 - `GET /api/debug/embed|query|file|probe-file|stats` – diagnostics for embeddings and vector index state.
 
 ## Project layout
@@ -112,7 +122,7 @@ tests/           Vitest suites with mocked Cloudflare/OpenAI services
 ```
 
 ## Notes & conventions
-- Public folders live under the reserved ID `public-root`. User-specific storage follows `user:{base64url(id)}` for vectors and `users/{id}` for R2 keys.
+- Public folders live under the reserved IDs `public-root` (organization) and `private-root` (personal). Team system folders follow `team:{teamId}`. User-specific storage follows `user:{base64url(id)}` for vectors and `users/{id}` for R2 keys.
 - Uploaded PDFs and DOCX files are converted to `.txt` with the same basename before storage; only the text representation is persisted and ingested.
 - Chunk ranges are inclusive; if you modify chunk size or overlap keep the overlap ≥200 characters (update this README if you change the invariant).
 - The Worker defaults `ALLOWED_ORIGIN` to `http://localhost:5173`; override via secret if your frontend runs elsewhere.

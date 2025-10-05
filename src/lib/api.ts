@@ -13,16 +13,23 @@ export interface SessionResponse {
     email: string;
     displayName: string | null;
     avatarUrl: string | null;
+    organizationRole: string;
   };
   tenant: string;
+  organisation: {
+    id: string;
+    role: string;
+  };
+  teams: string[];
 }
 
-export type Visibility = 'public' | 'private';
+export type Visibility = 'organization' | 'personal' | 'team';
 
 export interface FolderSummary {
   id: string;
   name: string;
   visibility: Visibility;
+  teamId: string | null;
   fileCount: number;
   owner: {
     id: string;
@@ -44,14 +51,91 @@ export interface FileSummary {
     id: string;
     name: string;
     visibility: Visibility;
+    teamId: string | null;
   };
   owner: {
     id: string;
     email: string;
     displayName: string | null;
   };
+  hasDirectAccess?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TeamMemberSummary {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  username: string | null;
+  role: 'member' | 'manager' | 'owner';
+  status: 'pending' | 'active' | 'removed';
+}
+
+export interface TeamRecord {
+  id: string;
+  organisation_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  owner_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamSummary {
+  id: string;
+  organisation_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  owner_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  members: TeamMemberSummary[];
+}
+
+export interface RosterEntry {
+  id: string;
+  organisation_id: string;
+  user_id: string | null;
+  email: string;
+  display_name: string | null;
+  role: 'member' | 'admin' | 'owner';
+  status: 'pending' | 'invited' | 'active' | 'removed';
+  invited_by: string | null;
+  invited_at: string | null;
+  joined_at: string | null;
+  created_at: string;
+  updated_at: string;
+  user_email: string | null;
+  user_display_name: string | null;
+}
+
+export interface DirectoryEntry {
+  id: string;
+  email: string;
+  display_name: string | null;
+  username: string | null;
+  title: string | null;
+  organization_role: string | null;
+  teams: string[];
+}
+
+export interface FilePermissionSummary {
+  user_id: string;
+  access_level: 'viewer' | 'editor';
+  email: string;
+  display_name: string | null;
+}
+
+export interface FileSharingSummary {
+  id: string;
+  visibility: Visibility;
+  team_id: string | null;
+  permissions: FilePermissionSummary[];
 }
 
 export interface ChatResponse {
@@ -208,7 +292,7 @@ export function fetchSession(): Promise<SessionResponse> {
   return fetchJSON('/api/session');
 }
 
-export function fetchFolders(params: { visibility?: 'public' | 'private' | 'all' } = {}): Promise<{ folders: FolderSummary[] }>
+export function fetchFolders(params: { visibility?: 'organization' | 'personal' | 'team' | 'all' } = {}): Promise<{ folders: FolderSummary[] }>
 {
   const search = new URLSearchParams();
   if (params.visibility) {
@@ -218,7 +302,7 @@ export function fetchFolders(params: { visibility?: 'public' | 'private' | 'all'
   return fetchJSON(`/api/folders${query ? `?${query}` : ''}`);
 }
 
-export function createFolder(body: { name: string; visibility: Visibility }): Promise<{ folder: FolderSummary }> {
+export function createFolder(body: { name: string; visibility: Visibility; teamId?: string | null }): Promise<{ folder: FolderSummary }> {
   return fetchJSON('/api/folders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -226,7 +310,10 @@ export function createFolder(body: { name: string; visibility: Visibility }): Pr
   });
 }
 
-export function updateFolder(id: string, body: { name?: string; visibility?: Visibility }): Promise<{ folder: FolderSummary }>
+export function updateFolder(
+  id: string,
+  body: { name?: string; visibility?: Visibility; teamId?: string | null },
+): Promise<{ folder: FolderSummary }>
 {
   return fetchJSON(`/api/folders/${id}`, {
     method: 'PATCH',
@@ -240,7 +327,7 @@ export function deleteFolder(id: string): Promise<{ deleted: boolean; removedFil
   return fetchJSON(`/api/folders/${id}`, { method: 'DELETE' });
 }
 
-export function fetchFiles(params: { visibility?: 'public' | 'private' | 'all'; folderId?: string }): Promise<{ files: FileSummary[] }>
+export function fetchFiles(params: { visibility?: 'organization' | 'personal' | 'team' | 'all'; folderId?: string }): Promise<{ files: FileSummary[] }>
 {
   const search = new URLSearchParams();
   if (params.visibility) search.set('visibility', params.visibility);
@@ -262,7 +349,10 @@ export async function uploadFile(formData: FormData): Promise<{ file: FileSummar
   return response.json();
 }
 
-export function updateFile(id: string, body: { name?: string; visibility?: Visibility; folderId?: string }): Promise<{ file: FileSummary }>
+export function updateFile(
+  id: string,
+  body: { name?: string; visibility?: Visibility; teamId?: string | null },
+): Promise<{ file: FileSummary }>
 {
   return fetchJSON(`/api/files/${id}`, {
     method: 'PATCH',
@@ -282,5 +372,95 @@ export function sendChat(message: string, knowledgeMode: boolean, scope: ChatSco
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, knowledgeMode, scope }),
+  });
+}
+
+export function fetchRoster(): Promise<{ roster: RosterEntry[] }> {
+  return fetchJSON('/api/organization/roster');
+}
+
+export function uploadRoster(text: string): Promise<{ roster: RosterEntry[] }> {
+  return fetchJSON('/api/organization/roster', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function fetchTeams(): Promise<{ teams: TeamSummary[] }> {
+  return fetchJSON('/api/teams');
+}
+
+export async function createTeam(input: { name: string; description?: string | null }): Promise<{ team: TeamSummary }>
+{
+  const result = await fetchJSON('/api/teams', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }) as { team: TeamSummary | TeamRecord };
+
+  const { team } = result;
+  if ('members' in team) {
+    return { team };
+  }
+  return {
+    team: {
+      ...team,
+      members: [],
+    },
+  };
+}
+
+export function inviteTeamMembers(teamId: string, userIds: string[]): Promise<{ team: TeamSummary | null }>
+{
+  return fetchJSON(`/api/teams/${teamId}/invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds }),
+  });
+}
+
+export function acceptTeamInvite(teamId: string): Promise<{ team: TeamSummary | null }>
+{
+  return fetchJSON(`/api/teams/${teamId}/accept`, {
+    method: 'POST',
+  });
+}
+
+export function updateTeamMemberRole(teamId: string, userId: string, role: 'member' | 'manager' | 'owner'): Promise<{ team: TeamSummary | null }>
+{
+  return fetchJSON(`/api/teams/${teamId}/members/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeTeamMember(teamId: string, userId: string): Promise<{ team: TeamSummary | null }>
+{
+  return fetchJSON(`/api/teams/${teamId}/members/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function searchDirectoryUsers(query: string, limit = 50): Promise<{ results: DirectoryEntry[] }>
+{
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+  if (limit) params.set('limit', String(limit));
+  const qs = params.toString();
+  return fetchJSON(`/api/directory/users${qs ? `?${qs}` : ''}`);
+}
+
+export function getFileSharing(id: string): Promise<{ sharing: FileSharingSummary }> {
+  return fetchJSON(`/api/files/${id}/sharing`);
+}
+
+export function updateFileSharing(id: string, payload: { visibility: Visibility; teamId?: string | null; permissions: Array<{ userId: string; accessLevel: 'viewer' | 'editor' }> }): Promise<{ sharing: FileSharingSummary }>
+{
+  return fetchJSON(`/api/files/${id}/sharing`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
 }
