@@ -12,7 +12,7 @@ type KnowledgeScope = ChatScope;
 const SCOPE_OPTIONS: Array<{ id: KnowledgeScope; label: string }> = [
   { id: 'personal', label: 'Personal' },
   { id: 'team', label: 'Team' },
-  { id: 'org', label: 'Org' },
+  { id: 'org', label: 'Organization' },
   { id: 'all', label: 'All' },
 ];
 
@@ -20,15 +20,15 @@ const SCOPE_STORAGE_KEY = 'marble-chat-scope';
 const SCOPE_LABELS: Record<KnowledgeScope, string> = {
   personal: 'Personal',
   team: 'Team',
-  org: 'Org',
+  org: 'Organization',
   all: 'All spaces',
 };
 
 const SCOPE_DESCRIPTIONS: Record<KnowledgeScope, string> = {
   personal: 'Queries only your private Marble files.',
   team: 'Targets shared team spaces (coming soon).',
-  org: 'Searches org-wide knowledge you can access.',
-  all: 'Combines personal, team, and org spaces.',
+  org: 'Searches organization-wide knowledge you can access.',
+  all: 'Combines personal, team, and organization spaces.',
 };
 
 function structureAnswer(answer: string): AnswerBlock[] {
@@ -286,23 +286,27 @@ export function ChatPanel() {
                 ? 'Answers grounded in your private & shared documents.'
                 : 'Pure model answers.'}
             </small>
-            <div className="chat-panel__scope-toggle" role="tablist" aria-label="Knowledge scope">
-              {SCOPE_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="tab"
-                  className={scope === option.id ? 'active' : ''}
-                  aria-selected={scope === option.id}
-                  onClick={() => setScope(option.id)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <small className="chat-panel__hint-text chat-panel__hint-text--scope">
-              {SCOPE_DESCRIPTIONS[scope]}
-            </small>
+            {knowledgeMode && (
+              <>
+                <div className="chat-panel__scope-toggle" role="tablist" aria-label="Knowledge scope">
+                  {SCOPE_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="tab"
+                      className={scope === option.id ? 'active' : ''}
+                      aria-selected={scope === option.id}
+                      onClick={() => setScope(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <small className="chat-panel__hint-text chat-panel__hint-text--scope">
+                  {SCOPE_DESCRIPTIONS[scope]}
+                </small>
+              </>
+            )}
           </div>
         </header>
       )}

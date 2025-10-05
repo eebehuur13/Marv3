@@ -98,7 +98,7 @@ function UploadDialog({
                     onClick={() => setSelectedVisibility(option)}
                     disabled={isUploading}
                   >
-                    {option === 'private' ? 'Personal' : 'Org Shared'}
+                    {option === 'private' ? 'Personal' : 'Organization'}
                   </button>
                 ))}
               </div>
@@ -259,7 +259,7 @@ function FolderDialog({ open, onClose, onCreate, isSaving, defaultVisibility, al
                     onClick={() => setVisibility(option)}
                     disabled={isSaving}
                   >
-                    {option === 'private' ? 'Personal' : 'Org Shared'}
+                    {option === 'private' ? 'Personal' : 'Organization'}
                   </button>
                 ))}
               </div>
@@ -381,7 +381,10 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
     [folders],
   );
   const publicFolders = useMemo(
-    () => folders.filter((folder) => folder.visibility === 'public'),
+    () =>
+      folders
+        .filter((folder) => folder.visibility === 'public')
+        .filter((folder) => !(folder.id === 'public-root' && folder.fileCount === 0)),
     [folders],
   );
 
@@ -832,13 +835,13 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
     ? selectedFolder.owner.displayName ?? selectedFolder.owner.email
     : null;
   const isOrgSpace = visibilityFilter === 'public';
-  const spaceLabel = isOrgSpace ? 'Org Shared' : 'Personal';
-  const sidebarTitle = isOrgSpace ? 'Org folders' : 'Personal folders';
-  const headerTitle = mode === 'personal' ? 'Personal Files' : 'Document Viewer & Search';
+  const spaceLabel = isOrgSpace ? 'Organization' : 'Personal';
+  const sidebarTitle = isOrgSpace ? 'Organization folders' : 'Personal folders';
+  const headerTitle = mode === 'personal' ? 'Personal Files' : 'Library';
   const headerSubtitle =
     mode === 'personal'
       ? 'Your private Marble workspace—upload drafts and notes that only you can see.'
-      : 'Curate the documents Marble references across your workspace.';
+      : 'Organize the knowledge Marble can draw from across personal, team, and organization spaces.';
   const selectedFolderFileCountLabel = selectedFolder
     ? `${selectedFolder.fileCount} ${selectedFolder.fileCount === 1 ? 'file' : 'files'}`
     : null;
@@ -892,7 +895,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
                       />
                     </svg>
                   </span>
-                  <span>Org Shared</span>
+                  <span>Organization</span>
                 </button>
               )}
             </div>
@@ -1201,7 +1204,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
                     const canManage = isOwner(file);
                     const menuOpen = activeFileMenuId === file.id;
                     const isRenaming = inlineRenameId === file.id;
-                    const visibilityLabel = file.visibility === 'public' ? 'Org Shared' : 'Personal';
+                    const visibilityLabel = file.visibility === 'public' ? 'Organization' : 'Personal';
                     return (
                       <tr key={file.id} className={selected ? 'is-selected' : undefined}>
                         <td className="files-table__select">
@@ -1316,7 +1319,7 @@ export function FileManager({ currentUserId, mode = 'full', storageKey }: FileMa
                                         setActiveFileMenuId(null);
                                       }}
                                     >
-                                      Make {file.visibility === 'public' ? 'Personal' : 'Org Shared'}
+                                      {file.visibility === 'public' ? 'Make Personal' : 'Share with Organization'}
                                     </button>
                                     <button
                                       type="button"

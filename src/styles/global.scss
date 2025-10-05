@@ -1419,12 +1419,14 @@ textarea {
 }
 
 .chat-panel__mode-toggle {
-  display: inline-flex;
+  display: flex;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--color-border-glass);
   border-radius: var(--radius-pill);
   padding: 0.25rem;
   gap: 0.25rem;
+  width: 100%;
+  max-width: 280px;
 }
 
 .chat-panel__mode-toggle button {
@@ -1436,11 +1438,16 @@ textarea {
   color: var(--color-text-muted);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
 }
 
-.chat-panel__mode-toggle button:hover {
+.chat-panel__mode-toggle button:hover,
+.chat-panel__mode-toggle button:focus-visible {
   background: rgba(96, 86, 248, 0.08);
   color: var(--color-text-default);
+  outline: none;
 }
 
 .chat-panel__mode-toggle button.active {
@@ -1458,12 +1465,14 @@ textarea {
 }
 
 .chat-panel__scope-toggle {
-  display: inline-flex;
+  display: flex;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--color-border-glass);
   border-radius: var(--radius-pill);
   padding: 0.25rem;
   gap: 0.25rem;
+  width: 100%;
+  max-width: 420px;
 }
 
 .chat-panel__scope-toggle button {
@@ -1475,6 +1484,9 @@ textarea {
   font-weight: 600;
   color: var(--color-text-muted);
   transition: background 0.15s ease, color 0.15s ease;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
 }
 
 .chat-panel__scope-toggle button:hover,

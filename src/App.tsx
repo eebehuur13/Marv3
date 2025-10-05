@@ -85,18 +85,17 @@ function Dashboard() {
   }
 
   const user = data?.user;
-  const navItems: Array<{ id: ActiveView; label: string }>
-    = [
-      { id: 'home', label: 'Home' },
-      { id: 'chat', label: 'Chat' },
-      { id: 'personal-files', label: 'Personal Files' },
-      { id: 'documents', label: 'Document Viewer & Search' },
-      { id: 'communications', label: 'Communications' },
-      { id: 'profile', label: 'User Profile' },
-      { id: 'following', label: 'Following' },
-      { id: 'analytics', label: 'Analytics' },
-      { id: 'about', label: 'About Marble' },
-    ];
+  const navItems: Array<{ id: ActiveView; label: string }> = [
+    { id: 'home', label: 'Home' },
+    { id: 'chat', label: 'Chat' },
+    { id: 'personal-files', label: 'Personal Files' },
+    { id: 'documents', label: 'Library' },
+    { id: 'communications', label: 'Inbox' },
+    { id: 'profile', label: 'User Profile' },
+    { id: 'following', label: 'Following' },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'about', label: 'About Marble' },
+  ];
 
   const renderView = () => {
     if (!user) {

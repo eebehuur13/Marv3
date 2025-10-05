@@ -3,9 +3,9 @@ import { PlaceholderView } from './PlaceholderView';
 export function CommunicationsView() {
   return (
     <PlaceholderView
-      title="Communications"
-      description="Messages, announcements, and email threads will live here."
-      hint="We’ll connect Marble with your preferred communication tools soon."
+      title="Inbox"
+      description="Your Marble messages, announcements, and approvals will land here."
+      hint="Workspace messaging is on the roadmap—stay tuned."
     />
   );
 }
