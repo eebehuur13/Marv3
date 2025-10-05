@@ -12,11 +12,7 @@ import { listFilesQuery } from '../schemas';
 import { buildObjectKey } from '../lib/storage';
 import type { Visibility } from '../types';
 import { ingestFileById } from '../lib/ingestion';
-import {
-  convertToPlainText,
-  deriveTxtFileName,
-  TextConversionError,
-} from '../lib/text-conversion';
+import { assertTxtFile, deriveTxtFileName } from '../lib/text-conversion';
 
 const ALLOWED_VISIBILITIES: Visibility[] = ['public', 'private'];
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB upper bound keeps conversion predictable
@@ -123,26 +119,12 @@ export async function handleCreateFile(c: AppContext) {
     throw new HTTPException(400, { message: 'File exceeds the 5 MB upload limit.' });
   }
 
+  assertTxtFile({ file_name: fileField.name, mime_type: fileField.type || null });
+
   const requestedName = typeof customNameRaw === 'string' && customNameRaw.trim() ? customNameRaw.trim() : fileField.name;
-  const arrayBuffer = await fileField.arrayBuffer();
-
-  let conversion;
-  try {
-    conversion = await convertToPlainText({
-      arrayBuffer,
-      fileName: fileField.name,
-      mimeType: fileField.type,
-    });
-  } catch (error) {
-    if (error instanceof TextConversionError) {
-      throw new HTTPException(400, { message: error.message });
-    }
-    console.error('File conversion failed', error);
-    throw new HTTPException(500, { message: 'Failed to convert the uploaded file to text.' });
-  }
-
-  if (!conversion.text.trim()) {
-    throw new HTTPException(400, { message: 'File appears to be empty after conversion.' });
+  const text = await fileField.text();
+  if (!text.trim()) {
+    throw new HTTPException(400, { message: 'Uploaded file appears to be empty.' });
   }
 
   const fileName = deriveTxtFileName(requestedName);
@@ -157,7 +139,7 @@ export async function handleCreateFile(c: AppContext) {
   });
 
   try {
-    await c.env.MARBLE_FILES.put(objectKey, conversion.text, {
+    await c.env.MARBLE_FILES.put(objectKey, text, {
       httpMetadata: { contentType: 'text/plain' },
     });
   } catch (error) {
@@ -173,7 +155,7 @@ export async function handleCreateFile(c: AppContext) {
     visibility: folder.visibility,
     fileName,
     r2Key: objectKey,
-    size: conversion.bytes,
+    size: fileField.size,
     status: 'uploading',
     mimeType: 'text/plain',
   });

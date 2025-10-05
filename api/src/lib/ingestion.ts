@@ -1,21 +1,10 @@
 import { HTTPException } from 'hono/http-exception';
 import { chunkText } from './chunk';
 import { createEmbeddings, OpenAIError } from './openai';
-import {
-  deleteChunksForFile,
-  getFileById,
-  insertChunk,
-  updateFileAfterConversion,
-  updateFileStatus,
-} from './db';
+import { deleteChunksForFile, getFileById, insertChunk, updateFileStatus } from './db';
 import { deleteChunkVectors, upsertChunkVector } from './vectorize';
 import type { MarbleBindings } from '../types';
-import {
-  convertToPlainText,
-  deriveTxtFileName,
-  TextConversionError,
-} from './text-conversion';
-import { buildObjectKey } from './storage';
+import { assertTxtFile } from './text-conversion';
 
 function parseNumber(value: string | undefined, fallback: number): number {
   const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
@@ -54,73 +43,12 @@ export async function ingestFileById(env: MarbleBindings, fileId: string, acting
     throw new HTTPException(404, { message: 'Uploaded object not found in R2' });
   }
 
-  let text: string | null = null;
-  let activeFile = file;
+  assertTxtFile(file);
 
-  const needsConversion =
-    !file.file_name.toLowerCase().endsWith('.txt') ||
-    (file.mime_type && file.mime_type !== 'text/plain');
-
-  if (needsConversion) {
-    let conversion;
-    try {
-      const buffer = await object.arrayBuffer();
-      conversion = await convertToPlainText({
-        arrayBuffer: buffer,
-        fileName: file.file_name,
-        mimeType: file.mime_type ?? object.httpMetadata?.contentType ?? undefined,
-      });
-    } catch (error) {
-      if (error instanceof TextConversionError) {
-        throw new HTTPException(400, { message: error.message });
-      }
-      console.error('Failed to convert file before ingestion', error);
-      throw new HTTPException(500, { message: 'Failed to normalize file before ingestion.' });
-    }
-
-    const nextFileName = deriveTxtFileName(file.file_name);
-    const nextKey = buildObjectKey({
-      visibility: file.visibility,
-      ownerId: file.owner_id,
-      folderId: file.folder_id,
-      fileId: file.id,
-      fileName: nextFileName,
-    });
-
-    try {
-      await env.MARBLE_FILES.put(nextKey, conversion.text, {
-        httpMetadata: { contentType: 'text/plain' },
-      });
-      if (nextKey !== file.r2_key) {
-        await env.MARBLE_FILES.delete(file.r2_key);
-      }
-    } catch (error) {
-      console.error('Failed to persist converted text to R2', error);
-      throw new HTTPException(500, { message: 'Failed to persist converted text to storage.' });
-    }
-
-    await updateFileAfterConversion(env, {
-      id: file.id,
-      fileName: nextFileName,
-      r2Key: nextKey,
-      size: conversion.bytes,
-      mimeType: 'text/plain',
-    });
-
-    activeFile = {
-      ...file,
-      file_name: nextFileName,
-      r2_key: nextKey,
-      size: conversion.bytes,
-      mime_type: 'text/plain',
-    };
-    text = conversion.text;
-  } else {
-    text = await object.text();
-  }
+  const text = await object.text();
 
   if (!text) {
-    throw new HTTPException(400, { message: 'File appears to be empty after conversion.' });
+    throw new HTTPException(400, { message: 'Uploaded file appears to be empty.' });
   }
 
   const chunkSize = parseNumber(env.CHUNK_SIZE, 1500);
@@ -178,10 +106,10 @@ export async function ingestFileById(env: MarbleBindings, fileId: string, acting
 
     await insertChunk(env, {
       id: chunkId,
-      file_id: activeFile.id,
-      folder_id: activeFile.folder_id,
-      owner_id: activeFile.owner_id,
-      visibility: activeFile.visibility,
+      file_id: file.id,
+      folder_id: file.folder_id,
+      owner_id: file.owner_id,
+      visibility: file.visibility,
       chunk_index: index,
       start_line: chunk.startLine,
       end_line: chunk.endLine,
@@ -191,14 +119,14 @@ export async function ingestFileById(env: MarbleBindings, fileId: string, acting
     try {
       await upsertChunkVector(env, chunkId, embeddings[index], {
         chunkId,
-        fileId: activeFile.id,
-        folderId: activeFile.folder_id,
-        folderName: activeFile.folder_name,
-        fileName: activeFile.file_name,
+        fileId: file.id,
+        folderId: file.folder_id,
+        folderName: file.folder_name,
+        fileName: file.file_name,
         startLine: chunk.startLine,
         endLine: chunk.endLine,
-        visibility: activeFile.visibility,
-        ownerId: activeFile.owner_id,
+        visibility: file.visibility,
+        ownerId: file.owner_id,
       });
     } catch (error) {
       console.error('Vector upsert failed for chunk', chunkId, error);
@@ -207,23 +135,23 @@ export async function ingestFileById(env: MarbleBindings, fileId: string, acting
 
     if (index === 0) {
       console.log('First chunk upserted', {
-        fileId: activeFile.id,
+        fileId: file.id,
         chunkId,
         startLine: chunk.startLine,
         endLine: chunk.endLine,
-        visibility: activeFile.visibility,
+        visibility: file.visibility,
       });
     }
 
     insertedChunks += 1;
   }
 
-  await updateFileStatus(env, activeFile.id, 'ready');
+  await updateFileStatus(env, file.id, 'ready');
 
   console.log('Ingest completed', {
-    fileId: activeFile.id,
+    fileId: file.id,
     chunks: insertedChunks,
-    visibility: activeFile.visibility,
+    visibility: file.visibility,
   });
 
   return { chunks: insertedChunks };

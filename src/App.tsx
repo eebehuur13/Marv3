@@ -119,15 +119,12 @@ function Dashboard() {
             >
               <span>Files &amp; Folders</span>
             </button>
-          </div>
-          <div className="primary-nav__about-card">
-            <h3>About Marble</h3>
-            <p>
-              Marble keeps your team’s knowledge connected. Upload files, organise them into shared or private spaces,
-              and ask by meaning to get cited answers—down to the exact passage, timestamp, or frame.
-            </p>
-            <button type="button" onClick={() => setActiveView('about')}>
-              Learn more
+            <button
+              type="button"
+              className={activeView === 'about' ? 'active' : ''}
+              onClick={() => setActiveView('about')}
+            >
+              <span>About Marble</span>
             </button>
           </div>
         </aside>

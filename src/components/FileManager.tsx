@@ -41,7 +41,7 @@ function UploadDialog({
   defaultFolderId,
 }: UploadDialogProps) {
   const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-  const ACCEPTED_EXTENSIONS = ['.txt', '.pdf', '.docx'];
+  const ACCEPTED_EXTENSIONS = ['.txt'];
   const [selectedVisibility, setSelectedVisibility] = useState<Visibility>(visibility);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -135,7 +135,7 @@ function UploadDialog({
                 const lower = chosen.name.toLowerCase();
                 const supported = ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
                 if (!supported) {
-                  setError('Only .pdf, .docx, or .txt files are supported.');
+                  setError('Only .txt files are supported.');
                   setFile(null);
                   return;
                 }
@@ -164,9 +164,7 @@ function UploadDialog({
           </label>
 
           {error && <p className="error-text">{error}</p>}
-          <p className="helper-text">
-            PDF, DOCX, or TXT files up to 5&nbsp;MB are converted to plain text before ingesting.
-          </p>
+          <p className="helper-text">TXT files up to 5&nbsp;MB are ingested as-is.</p>
         </div>
         <footer className="dialog-footer">
           <button type="button" className="link" onClick={onClose} disabled={isUploading}>

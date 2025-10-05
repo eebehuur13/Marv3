@@ -7,16 +7,10 @@ import {
   ensureFolder,
   getFolder,
 } from '../lib/db';
-import { deriveTxtFileName, detectFileKind, SupportedFileKind } from '../lib/text-conversion';
+import { assertTxtFile, deriveTxtFileName } from '../lib/text-conversion';
 import { buildObjectKey } from '../lib/storage';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-
-const MIME_BY_KIND: Record<SupportedFileKind, string> = {
-  txt: 'text/plain',
-  pdf: 'application/pdf',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-};
 
 export async function handleUploadUrl(c: AppContext) {
   try {
@@ -35,10 +29,7 @@ export async function handleUploadUrl(c: AppContext) {
       throw new HTTPException(400, { message: 'File exceeds the 5 MB upload limit.' });
     }
 
-    const detectedKind = detectFileKind(fileName, mimeType);
-    if (!detectedKind) {
-      throw new HTTPException(400, { message: 'Only .pdf, .docx, or .txt files are supported.' });
-    }
+    assertTxtFile({ file_name: fileName, mime_type: mimeType ?? null });
 
     const normalizedName = deriveTxtFileName(fileName);
 
@@ -82,11 +73,11 @@ export async function handleUploadUrl(c: AppContext) {
       r2Key: key,
       size,
       status: 'uploading',
-      mimeType: MIME_BY_KIND[detectedKind],
+      mimeType: 'text/plain',
     });
 
     // ---- Try presign (several variants). If all fail, return the exact reason. ----
-    const contentType = MIME_BY_KIND[detectedKind];
+    const contentType = 'text/plain';
     let urlStr: string | null = null;
     const reasons: string[] = [];
 
